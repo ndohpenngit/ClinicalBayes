@@ -1,0 +1,18 @@
+---
+title: "`r params$title %||% 'ClinicalBayes Report'`"
+output: html_document
+params:
+  title: "ClinicalBayes Report"
+  priors: NULL
+  ctrl_post: NULL
+  decision: NULL
+  oc: NULL
+  comm: NULL
+  cont2a_oc: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+`%||%` <- function(x, y) if (is.null(x)) y else x
+library(ggplot2)
+library(DT)

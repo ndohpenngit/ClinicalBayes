@@ -1,0 +1,134 @@
+/* ===========================================================
+   ClinicalBayes Theme — Light + Dark Mode with Info Icons
+   =========================================================== */
+
+body, .main-header, .main-sidebar, .content-wrapper, .main-footer, .box, .modal-content {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* --------------------- Light Mode ------------------------- */
+
+body {
+  background: #f7f7f7;
+  color: #222;
+}
+
+.main-header, .main-sidebar, .content-wrapper, .main-footer, .box {
+  background-color: #ffffff;
+  color: #222;
+  border-color: #ddd;
+}
+
+/* Box header styling */
+.box .box-header {
+  background: linear-gradient(#f9f9f9, #ececec);
+  color: #222;
+  padding-right: 45px; /* space for info icon */
+  border-bottom: 1px solid #ccc;
+}
+
+/* Info icon (light mode) */
+.cb-info-icon {
+  float: right;
+  margin-left: 10px;
+  font-size: 16px;
+  color: #0073b7 !important;
+  cursor: pointer;
+  transition: color 0.3s ease, transform 0.2s ease;
+}
+
+.cb-info-icon:hover {
+  color: #005a8c !important;
+  transform: scale(1.15);
+}
+
+/* Mini glow */
+.cb-info-icon i {
+  text-shadow: 0 0 3px rgba(0,0,0,0.15);
+}
+
+
+/* --------------------- Dark Mode ------------------------- */
+
+body.dark {
+  background: #0d1f2d !important;
+  color: #f0f0f0 !important;
+}
+
+body.dark .main-header,
+body.dark .main-sidebar,
+body.dark .content-wrapper,
+body.dark .main-footer {
+  background-color: #0d1f2d !important;
+  color: #f0f0f0 !important;
+  border-color: #223344 !important;
+}
+
+body.dark .box {
+  background: #1a2a3a !important;
+  border-color: #223344 !important;
+  color: #f0f0f0 !important;
+}
+
+body.dark .box .box-header {
+  background: linear-gradient(#1c2e3d, #14222f) !important;
+  color: #f0f0f0 !important;
+  border-bottom: 1px solid #223344;
+  padding-right: 45px;
+}
+
+/* Info icon (dark mode) */
+body.dark .cb-info-icon {
+  color: #66cfff !important;
+  text-shadow: 0 0 4px rgba(0, 170, 255, 0.4);
+}
+
+body.dark .cb-info-icon:hover {
+  color: #99e2ff !important;
+  transform: scale(1.15);
+}
+
+/* Buttons */
+.btn-info {
+  background-color: #00a8a8;
+  border-color: #00a8a8;
+}
+
+.btn-info:hover {
+  background-color: #008c8c;
+  border-color: #008c8c;
+}
+
+/* Modal dark mode */
+body.dark .modal-content {
+  background-color: #1a2a3a !important;
+  color: #f0f0f0 !important;
+}
+
+body.dark .modal-backdrop {
+  background-color: rgba(13,31,45,0.8) !important;
+}
+
+/* Documentation tab content iframe fixes */
+#docs_manual iframe,
+#docs_manual {
+  background: transparent !important;
+}
+
+/* Sidebar links */
+body.dark .sidebar-menu > li > a {
+  color: #c8d4e0 !important;
+}
+
+/* --------------------- Header Icon Alignment ------------------------- */
+
+/* Ensure icons don't overlap content */
+.box-header .cb-info-icon {
+  position: absolute;
+  right: 15px;
+  top: 10px;
+}
+
+.box-header {
+  position: relative;
+}

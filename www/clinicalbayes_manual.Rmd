@@ -1,0 +1,549 @@
+---
+title: "ClinicalBayes User & Statistical Manual"
+subtitle: "Bayesian Borrowing & Decision Framework for Clinical Trials"
+author: "Ndoh Penn"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: cosmo
+    df_print: paged
+  pdf_document:
+    toc: true
+    number_sections: true
+    latex_engine: xelatex
+always_allow_html: true
+geometry: margin=1in
+fontsize: 11pt
+---
+    
+```{r setup, include=FALSE}
+# Knitr / render options
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, cache = FALSE)
+options(knitr.kable.NA = "")
+```
+
+<!-- HEADER WITH LOGO + TITLE -->
+<div style="display:flex; align-items:center; gap:20px; margin-bottom:25px;">
+<img src="logo.png" style="height:80px;">
+<!-- <h1 style="margin:0;">ClinicalBayes – Full Documentation</h1> -->
+<div style="color:#666; font-size:0.95em;">Bayesian borrowing, decision rules, and operating characteristic simulations for clinical trials</div> 
+</div> 
+
+
+# Overview {#intro}
+
+ClinicalBayes is an interactive Shiny dashboard that implements Bayesian methods for:
+
+- Binary endpoints (response / event)
+- Continuous endpoints (two-arm)
+- Dynamic borrowing of historical control data
+- Posterior decision rules
+- Operating characteristic (OC) simulations
+- Commensurate priors (Stan)
+- Meta-Analytic-Predictive (rMAP) priors and Power priors
+- Normal–Inverse-Gamma models
+- Exportable reporting
+
+This manual describes:
+
+1. **How to use the application** (User Guide)  
+2. **The statistical methods** (Appendix)
+
+---
+
+# User Guide
+
+This section explains how to navigate and use each tab inside the ClinicalBayes dashboard.
+
+---
+
+## Workflow
+
+The ClinicalBayes workflow for Bayesian borrowing, posterior computation, 
+decision-making, and operating characteristics follows the structure below.
+
+```{r workflow-diagram, echo=FALSE, eval=knitr::is_html_output()}
+library(DiagrammeR)
+
+grViz("
+digraph clinicalbayes {
+  graph [rankdir = LR, fontsize = 10]
+  node [shape = rectangle, style = filled, fillcolor = white, fontname = Helvetica]
+
+  subgraph cluster_hist {
+    label = 'Historical Data';
+    color = '#cccccc';
+    style = 'rounded';
+    hist_bin  [label='Historical binary\\n(y_i, n_i)'];
+    hist_cont [label='Historical continuous\\n(mean, var, N)'];
+  }
+
+  subgraph cluster_binary {
+    label = 'Binary Endpoint';
+    color = '#cccccc';
+    style = 'rounded';
+    rmap   [label='rMAP prior'];
+    pprior [label='Power prior'];
+    comm   [label='Commensurate prior\\n(Stan)'];
+    b_dec  [label='Binary decision\\nP(Δ > Δ*)'];
+    b_oc   [label='Binary OC simulation'];
+  }
+
+  subgraph cluster_cont {
+    label = 'Continuous Endpoint';
+    color = '#cccccc';
+    style = 'rounded';
+    cont_prior [label='Control N-IG\\n(power prior)'];
+    cont_dec   [label='Continuous decision\\nP(μ_t - μ_c > Δ*)'];
+    cont_oc    [label='Continuous OC simulation'];
+  }
+
+  subgraph cluster_report {
+    label = 'Reporting';
+    color = '#cccccc';
+    style = 'rounded';
+    rep    [label='HTML / PDF report'];
+  }
+
+  curr_bin  [label='Current binary data\\n(y_c, n_c, y_t, n_t)'];
+  curr_cont [label='Current continuous data\\n(means, variances, N)'];
+
+  hist_bin  -> rmap;
+  hist_bin  -> pprior;
+  hist_bin  -> comm;
+  hist_cont -> cont_prior;
+
+  curr_bin  -> rmap;
+  curr_bin  -> pprior;
+  curr_bin  -> comm;
+
+  curr_bin  -> b_dec;
+  b_dec     -> b_oc;
+
+  curr_cont -> cont_prior;
+  cont_prior -> cont_dec;
+  cont_dec   -> cont_oc;
+
+  rmap   -> b_dec;
+  pprior -> b_dec;
+  comm   -> b_dec;
+
+  b_oc    -> rep;
+  cont_oc -> rep;
+  b_dec   -> rep;
+  cont_dec-> rep;
+}
+")
+```
+
+# 1. Binary Endpoints
+
+## 1.1 Data & Priors {#binary-data-prior}
+
+Use this tab to import **historical control studies** and prepare priors for the binary endpoint.
+
+### Input format
+Your CSV must contain:
+
+- `study` – study name or identifier  
+- `events` – number of responders  
+- `n` – total sample size  
+
+### Current control data
+You may enter:
+
+- Current control responders  
+- Current control sample size  
+
+### Prior Types
+You can construct:
+
+- Robust rMAP priors  
+- Power priors  
+
+Each prior can be updated with current control data.
+
+---
+
+## 1.2 rMAP-style Prior {#binary-rmap}
+
+**Meta-Analytic-Predictive (MAP)** priors pool historical studies by creating a **mixture of Beta posteriors**.
+
+MAP pooling uses Beta posteriors from each historical study:
+  
+\[
+p_i \sim \text{Beta}(y_i + 1, n_i - y_i + 1)
+\]
+
+The “robust MAP” (rMAP) adds:
+
+- a weak Beta(1,1) component  
+- downweights historical data when conflict is present  
+
+
+The rMAP prior is:
+
+\[
+p_c \sim \sum_i w_i \, \text{Beta}(a_i,b_i) + w_R \, \text{Beta}(1,1)
+\]
+
+Posterior becomes:
+
+\[
+p_c | data = \sum_i w_i' \, \text{Beta}(a_i+y_c, b_i+n_c-y_c)
+\]
+
+---
+
+## 1.3 Power Prior {#binary-powerprior}
+
+\[
+L(\theta | y_H, n_H)^{\alpha}
+\]
+
+Gives:
+
+\[
+p_c \sim \text{Beta}(a_0 + \alpha y_H,\; b_0 + \alpha(n_H-y_H))
+\]
+
+Posterior:
+
+\[
+p_c | \text{data} \sim \text{Beta}(a_0 + \alpha y_H + y_c,\; b_0 + \alpha(n_H-y_H) + n_c - y_c)
+\]
+
+---
+
+## 1.4 Binary: Decision (Δ) {#binary-decision}
+
+Treatment difference:
+
+\[
+\Delta = p_t - p_c
+\]
+
+Decision rule:
+
+\[
+P(\Delta > \Delta^*) 
+\]
+
+Outputs:
+
+- Posterior plots  
+- posterior summaries  
+- Go / No-Go  
+
+---
+
+## 1.5 Operating Characteristics {#binary-oc}
+
+Monte Carlo estimates of:
+
+- Power
+- Type I error
+- Borrowing behavior
+
+Across grids of true parameters.
+
+---
+
+## 1.6 Commensurate Prior (Stan) {#binary-commensurate}
+
+Linking framework:
+
+\[
+\theta_c^{curr} \sim N(\theta_c^{hist}, \tau^{-1})
+\]
+
+\[
+\tau \sim \text{Gamma}(a_\tau, b_\tau)
+\]
+
+---
+
+# 2. Continuous Endpoints
+
+## 2.1 Two-arm: Data & Priors {#cont2a-data}
+
+Normal-Inverse-Gamma model:
+
+\[
+(\mu, \sigma^2) \sim \text{NIG}(m_0, k_0, \alpha_0, \beta_0)
+\]
+
+Supports power prior weighting.
+
+---
+
+## 2.2 Two-arm: Decision (Δ) {#cont2a-decision}
+
+\[
+\Delta = \mu_t - \mu_c
+\]
+
+Same posterior Go / No-Go structure.
+
+---
+
+## 2.3 Two-arm: Operating Characteristics {#cont2a-oc}
+
+Power & Type I error under continuous endpoint.
+
+---
+
+# Statistical Appendix {#appendix}
+
+This appendix summarizes the statistical models, prior constructions, posterior computations, effective sample size (ESS) calculations, decision rules, and operating characteristic (OC) simulation algorithms implemented in ClinicalBayes.
+
+---
+
+## A. Notation
+
+- \(y\) — observed event count (binary) or observed sample mean (continuous)
+- \(n\) — sample size
+- \(p\) — event (control/treatment) probability, e.g., control \(p_c\) or treatment \(p_t\)
+- \(\Delta = p_t - p_c\) (binary) or \(\Delta = \mu_t - \mu_c\) (continuous)
+- \(H\) — historical data
+- \(C\) — current data
+- \(S\) — number of Monte Carlo draws for simulation (posterior sample size)
+
+---
+
+## B. Binary endpoint: Beta mixtures, rMAP, and Power Prior
+
+### B.1 Single historical study
+A historical binary study with \(y_H\) events in \(n_H\) subjects yields a Beta posterior (with flat prior Beta(1,1)):
+
+\[
+p_H \mid \text{hist} \sim \text{Beta}(1 + y_H,\; 1 + n_H - y_H).
+\]
+
+### B.2 Mixture of historical Betas (MAP / rMAP)
+Given \(K\) historical studies with \((y_i, n_i)\), define component Beta parameters:
+
+\[
+\text{Beta}(a_i,b_i) \quad\text{with}\quad a_i = 1 + y_i,\; b_i = 1 + n_i - y_i.
+\]
+
+Weight each component by \(w_i\) (by default \(w_i \propto n_i\) — sample size weighting):
+
+\[
+w_i = \frac{n_i}{\sum_j n_j}, \quad \sum_i w_i = 1.
+\]
+
+The rMAP prior adds a robust component Beta(1,1) with weight \(w_R\). The mixture prior is:
+
+\[
+\pi(p) = \sum_{i=1}^K (1 - w_R) \, w_i \; \text{Beta}(a_i,b_i) \;+\; w_R \,\text{Beta}(1,1).
+\]
+
+**Posterior update** with current data \(y_c, n_c\) (mixture-of-Betas conjugacy):
+
+Each component updates as Beta\((a_i + y_c, b_i + n_c - y_c)\) with reweighted component weights:
+
+\[
+w_i' \propto w_i \, \frac{B(a_i + y_c, b_i + n_c - y_c)}{B(a_i, b_i)},
+\quad
+w_R' \propto w_R \, \frac{B(1 + y_c, 1 + n_c - y_c)}{B(1,1)}
+\]
+
+(normalize so weights sum to 1). In practice we sample from the posterior mixture using `rmixbeta()`.
+
+### B.3 Power Prior (binary)
+Aggregate historical totals \(Y_H = \sum_i y_i\), \(N_H = \sum_i n_i\). For a baseline Beta\((a_0,b_0)\), the power prior with \(0\le\alpha\le 1\) gives:
+
+\[
+\pi(p) \propto \text{Beta}(a_0,b_0) \cdot \text{Binomial}(Y_H;N_H,p)^\alpha
+\;\Rightarrow\;
+\text{Power prior } p \sim \text{Beta}(a_0 + \alpha Y_H,\; b_0 + \alpha (N_H - Y_H)).
+\]
+
+Update with current data \(y_c,n_c\) to obtain posterior Beta:
+
+\[
+p \mid \text{data} \sim \text{Beta}(a_0 + \alpha Y_H + y_c,\; b_0 + \alpha (N_H - Y_H) + n_c - y_c).
+\]
+
+---
+
+## C. Effective Sample Size (ESS)
+
+For a Beta\((a,b)\) distribution, **ESS** is defined as:
+
+\[
+\text{ESS}_{\text{Beta}} = a + b.
+\]
+
+For a mixture of Betas with mixture weights \(w\), we use the weighted average ESS:
+
+\[
+\text{ESS}_{\text{mix}} = \sum_k w_k (a_k + b_k).
+\]
+
+Practical interpretation:
+- ESS approximates the sample size of equivalent binomial data corresponding to the prior.
+- Incremental ESS = posterior ESS − prior ESS.
+
+---
+
+## D. Decision Rule for Binary Endpoint
+
+Define the treatment and control posteriors and compute posterior draws (Monte Carlo) for \(\Delta = p_t - p_c\).
+
+Decision rule:
+
+\[
+\text{Declare efficacy if } \Pr(\Delta > \Delta^*) > \gamma,
+\]
+
+where typical \(\gamma\) values are 0.9 to 0.99 and \(\Delta^*\) is the clinically meaningful difference.
+
+Implementation detail:
+- Draw \(S\) independent samples \(\{p_c^{(s)}\}_{s=1}^S\) and \(\{p_t^{(s)}\}_{s=1}^S\) from their posteriors (if using shared control posterior draw carefully if borrowing).
+- Compute \(\Delta^{(s)} = p_t^{(s)} - p_c^{(s)}\).
+- Estimate \(\Pr(\Delta > \Delta^*) \approx \frac1S \sum_{s=1}^S \mathbf{1}\{\Delta^{(s)} > \Delta^*\}\).
+
+---
+
+## E. Operating Characteristics (OC) Simulation — Binary
+
+To compute Pr(declare efficacy) under a grid of true parameters \((p_c^{\text{true}}, p_t^{\text{true}})\):
+
+**Algorithm**
+
+For each grid point:
+
+1.  For iteration $b = 1\ldots B$:
+
+-   Simulate current control $y_c^{(b)} \sim \text{Binomial}(n_c, p_c^{\text{true}})$.
+-   Simulate current treatment $y_t^{(b)} \sim \text{Binomial}(n_t, p_t^{\text{true}})$.
+-   (Re)construct the prior based on historical data (mixture or power prior).
+-   Update posterior(s) with simulated current data.
+-   Compute decision indicator $d^{(b)} = \mathbf{1}\{\Pr(\Delta > \Delta^*) > \gamma\}$.
+
+2.  Estimate power / operating characteristic as $\frac{1}{B}\sum_{b} d^{(b)}$.
+
+Report heatmaps of Pr(declare efficacy) across the grid. Also compute Type I error as the Pr(declare efficacy) when \(p_t^{\text{true}} = p_c^{\text{true}}\).
+
+---
+
+## F. Commensurate Prior (binary, Stan)
+
+Commensurate prior formulation (sketch):
+
+- Work on logit scale: \(\theta = \text{logit}(p)\).
+- Let \(\theta^{hist}\) be historical controls (estimated or modeled), and assume:
+
+\[
+\theta^{curr} \mid \theta^{hist}, \tau \sim N(\theta^{hist}, \tau^{-1}).
+\]
+
+Place a prior on \(\tau\) (e.g., \(\tau \sim \text{Gamma}(a_\tau,b_\tau)\)). Larger \(\tau\) → stronger shrinkage toward historical value.
+
+Stan is used to fit the hierarchical model and returns posteriors for \(\theta^{curr}\), \(\theta^{treatment}\), \(\tau\), and \(\Delta\). Posterior inference and decision rule are applied to posterior draws.
+
+---
+
+## G. Continuous endpoint: Normal–Inverse–Gamma (NIG) conjugate model
+
+### G.1 NIG prior parameterization
+An NIG prior can be parameterized as:
+
+\[
+\sigma^2 \sim \text{Inverse-Gamma}(a_0, b_0) \\
+\mu \mid \sigma^2 \sim N(m_0, \; \sigma^2 / k_0)
+\]
+
+This yields the joint NIG prior on \((\mu,\sigma^2)\) with parameters \((m_0,k_0,a_0,b_0)\).
+
+### G.2 Posterior update with data (sample mean \(\bar y\), sample variance \(s^2\), n)
+Given prior \((m_0,k_0,a_0,b_0)\) and observed data (\(\bar y, s^2, n\)):
+
+\[
+k_N = k_0 + n \\
+m_N = \frac{k_0 m_0 + n \bar y}{k_N} \\
+a_N = a_0 + \frac{n}{2} \\
+b_N = b_0 + \frac{1}{2}\left[(n-1)s^2 + \frac{k_0 n (\bar y - m_0)^2}{k_N}\right]
+\]
+
+Posterior: \((\mu,\sigma^2) \sim \text{NIG}(m_N,k_N,a_N,b_N)\).
+
+### G.3 Drawing posterior samples
+To obtain Monte Carlo draws:   
+1. Draw \(\sigma^2 \sim \text{Inverse-Gamma}(a_N,b_N)\) (or sample \(1/\sigma^2 \sim \text{Gamma}(a_N,b_N)\) and invert).   
+2. For each \(\sigma^2\), draw \(\mu \sim N(m_N,\sigma^2/k_N)\).
+
+Then compute \(\Delta^{(s)} = \mu_t^{(s)} - \mu_c^{(s)}\) and apply the decision threshold.
+
+### G.4 Borrowing (power prior on control)
+Given historical control summary \((\bar y_H, s^2_H, n_H)\) and power parameter \(\alpha\), convert to an effective prior for control by treating \(n_{eff} = \alpha n_H\) and building the corresponding NIG prior update from the historical summary, then use that as the prior for the current-control posterior update.
+
+---
+
+## H. Decision rule (continuous)
+Same rule format as binary:
+
+\[
+\text{Declare efficacy if } \Pr(\Delta > \Delta^*) > \gamma
+\]
+
+Estimate by Monte Carlo using posterior draws from the NIG posterior for both arms.
+
+---
+
+## I. Practical examples (numerical)
+
+### I.1 Binary example (rMAP)
+- Historical: study1 (8/40), study2 (15/75)
+- Current control: 12/50
+- Treatment: 30/100
+- Robust weight \(w_R = 0.10\) (10% Beta(1,1))
+- Build rMAP mixture and posterior; draw 50,000 samples per posterior and compute \(\Pr(\Delta > 0.10)\).
+
+Result (example output format; compute in app):  
+- Posterior mean \(p_c \approx 0.24\) 
+- Posterior mean \(p_t \approx 0.30\) 
+- Estimated \(\Pr(\Delta > 0.10) \approx 0.67\) → decision depends on \(\gamma\) chosen.
+
+### I.2 Continuous example (NIG)
+- Historical control summary: \(\bar y_H = 1.2\), \(s_H = 1.5\), \(n_H = 60\).
+- Current control: \(\bar y_c = 1.1\), \(s_c = 1.4\), \(n_c = 50\).
+- Treatment: \(\bar y_t = 1.4\), \(s_t = 1.45\), \(n_t = 100\).
+- Use power prior \(\alpha = 0.5\) for control priors.
+- Collect posterior samples and compute \(\Pr(\mu_t - \mu_c > 0.1)\).
+
+---
+
+## J. Implementation notes & numerical stability
+
+- Use vectorized sampling (large S draws) to approximate posterior probabilities.
+- Implement checks on input CSVs: require `study`, `events`, `n` columns and `0 <= events <= n`.
+- When working with tiny prior parameters (e.g., a0,b0 near zero), avoid exact zero to preserve conjugacy numerically.
+- For commensurate Stan models, monitor R-hat, effective sample size and posterior trace plots.
+
+---
+
+## K. References for further reading
+
+- Schmidli et al., “Robust meta-analytic predictive priors in clinical trials” (Biometrical Journal).
+- Ibrahim & Chen, “Power prior distributions for regression models” (Journal of Statistical Planning and Inference).
+- Hobbs et al., “Commensurate priors for borrowing historical information in clinical trials” (Biostatistics).
+
+---
+
+# Workflow Diagram {#workflow-diagram}
+
+```{r workflow-diagram, echo=FALSE, out.width='100%'}
+path <- file.path("www", "workflow-diagram.png")
+if (file.exists(path)) {
+  knitr::include_graphics(path)
+} else {
+  cat("Workflow: Upload data → Priors → Current data → Posterior → Decision → OC → Report")
+}
+```

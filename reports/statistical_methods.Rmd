@@ -1,0 +1,227 @@
+---
+title: "ClinicalBayes – Statistical Methods"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+fontsize: 11pt
+---
+
+# Overview
+
+ClinicalBayes implements Bayesian models for binary and continuous endpoints in two-arm clinical trials, including robust borrowing, dynamic borrowing, and operating characteristic (OC) evaluation. This document summarizes all statistical methods applied in the application.
+
+# 1. Binary Endpoint Model
+
+We consider a binomial likelihood:
+
+$$
+y \sim \mathrm{Binomial}(n, \theta)
+$$
+
+with a conjugate Beta prior:
+
+$$
+\theta \sim \mathrm{Beta}(a,b).
+$$
+
+Posterior:
+
+$$
+\theta \mid y,n \sim
+\mathrm{Beta}(a + y,\; b + n - y).
+$$
+
+------------------------------------------------------------------------
+
+# 2. Bayesian Borrowing for Binary Data
+
+## 2.1 Robust Meta-Analytic-Predictive (rMAP) Prior
+
+Historical studies $i = 1,\dots,H$ with outcomes $y_i,n_i$ produce posteriors:
+
+$$
+\theta_i \mid y_i,n_i \sim \mathrm{Beta}(y_i+1,\ n_i-y_i+1).
+$$
+
+The rMAP prior is a mixture:
+
+$$
+p(\theta_c) = \sum_{i=1}^{H} w_i\,\mathrm{Beta}(a_i,b_i)
++ w_0\,\mathrm{Beta}(1,1),
+$$
+
+where $w_0$ is a "robustification" weight (typically 0.1–0.3).
+
+Posterior mixture weights update via:
+
+$$
+\tilde{w}_i \propto w_i \cdot 
+\mathrm{Binomial}(y_c \mid n_c, \theta_i).
+$$
+
+------------------------------------------------------------------------
+
+## 2.2 Power Prior
+
+Historical data likelihood discounted by $\alpha$:
+
+$$
+p(\theta_c|\alpha)
+\propto \mathrm{Binomial}(y_H\mid n_H,\theta_c)^\alpha
+  \times \mathrm{Beta}(a_0,b_0).
+$$
+
+Posterior:
+
+$$
+\theta_c \mid y_c,y_H \sim
+\mathrm{Beta}(a_0 + y_c + \alpha y_H,\;
+b_0 + (n_c-y_c) + \alpha(n_H-y_H)).
+$$
+
+------------------------------------------------------------------------
+
+# 3. Binary Decision Criterion
+
+We compute:
+
+$$
+\Delta = \theta_t - \theta_c.
+$$
+
+Decision rule:
+
+$$
+\Pr(\Delta > \Delta^\*) > p_{\text{cut}}.
+$$
+
+Posterior draws $\Delta^{(m)}$ approximate this probability.
+
+------------------------------------------------------------------------
+
+# 4. Operating Characteristics (Binary)
+
+Under true parameters $\theta_c^{(true)},\theta_t^{(true)}$:
+
+1.  Simulate $y_c,y_t$.\
+2.  Fit model + borrowing.\
+3.  Evaluate decision.\
+4.  Repeat.
+
+$$
+OC(\theta_c^{true},\theta_t^{true})
+= \Pr(\text{declare efficacy}).
+$$
+
+Used to assess type I error and power.
+
+------------------------------------------------------------------------
+
+# 5. Commensurate Prior Model (Stan)
+
+Let:
+
+-   $\theta_h$: historical control\
+-   $\theta_c$: current control\
+-   $\tau$: commensurability parameter (controls borrowing)
+
+Model:
+
+$$
+\theta_h \sim \mathrm{Beta}(1,1)
+$$
+
+$$
+\tau \sim \mathrm{Exponential}(1)
+$$
+
+$$
+\theta_c \mid \theta_h,\tau \sim 
+\mathrm{Beta}(\tau\theta_h,\ \tau(1-\theta_h)).
+$$
+
+Interpretation:
+
+-   Large $\tau$ → strong borrowing\
+-   Small $\tau$ → weak borrowing
+
+Posterior obtained via Hamiltonian Monte Carlo (Stan).
+
+------------------------------------------------------------------------
+
+# 6. Continuous Two-Arm Model
+
+Outcome:
+
+$$
+Y_{ig} \sim N(\mu_g, \sigma_g^2).
+$$
+
+We use a Normal–Inverse-Gamma prior:
+
+$$
+\sigma_g^2 \sim \mathrm{InvGamma}(\alpha_0,\beta_0)
+$$
+
+$$
+\mu_g \mid \sigma_g^2 \sim 
+N(m_0,\ \sigma_g^2/\kappa_0).
+$$
+
+Posterior is conjugate N–IG.
+
+------------------------------------------------------------------------
+
+# 7. Borrowing for Continuous Endpoints
+
+We apply a power prior to the control arm:
+
+Historical summary:\
+$\bar{y}_H, s_H^2, n_H$.
+
+Discount level $\alpha$ forms:
+
+$$
+\kappa_0' = \kappa_0 + \alpha n_H
+$$ $$
+m_0' = \frac{\kappa_0 m_0 + \alpha n_H\bar{y}_H}{\kappa_0'}
+$$
+
+and similarly for $\alpha_0', \beta_0'$.
+
+Treatment arm uses weak priors only.
+
+------------------------------------------------------------------------
+
+# 8. Decision for Continuous Endpoint
+
+We compute the posterior probability:
+
+$$
+\Pr(\mu_t - \mu_c > \Delta^\*) > p_{\text{cut}}.
+$$
+
+This uses N–IG posterior draws.
+
+------------------------------------------------------------------------
+
+# 9. Operating Characteristics (Continuous)
+
+Identical MC procedure as binary, replacing θ with μ.
+
+------------------------------------------------------------------------
+
+# 10. Summary Table
+
+| Method        | Purpose                        | Endpoint           |
+|---------------|--------------------------------|--------------------|
+| rMAP          | robust mixture-based borrowing | binary             |
+| power prior   | tunable borrowing via α        | binary, continuous |
+| commensurate  | dynamic borrowing via τ        | binary             |
+| decision Δ    | Bayesian superiority           | both               |
+| N–IG          | full posterior for (μ,σ²)      | continuous         |
+| OC simulation | power/type I error             | both               |
+
+------------------------------------------------------------------------

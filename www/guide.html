@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ClinicalBayes – Help & User Guide</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      line-height: 1.5;
+      color: #222;
+    }
+    h1, h2, h3 {
+      color: #005A9E;
+    }
+    code {
+      background: #f5f5f5;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .section {
+      margin-bottom: 24px;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+      background: #E0F4F4;
+      color: #005A9E;
+      margin-left: 6px;
+    }
+    ul {
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>ClinicalBayes – Help & User Guide</h1>
+  <p>
+    <strong>ClinicalBayes</strong> is an interactive Shiny dashboard for Bayesian
+    clinical trial design and analysis with borrowing from historical data
+    for binary and continuous endpoints.
+  </p>
+
+  <div class="section">
+    <h2>1. Navigation</h2>
+    <ul>
+      <li><strong>Binary: Data & Priors</strong> – upload historical binary data, build rMAP / power priors.</li>
+      <li><strong>Binary: Decision (Δ)</strong> – compute posterior decision probability for treatment vs control.</li>
+      <li><strong>Binary: OC</strong> – simulate operating characteristics (power, type I error).</li>
+      <li><strong>Binary: Commensurate (Stan)</strong> – dynamic borrowing via commensurate prior.</li>
+      <li><strong>Continuous 2-arm: Data</strong> – specify historical and current summaries for continuous endpoints.</li>
+      <li><strong>Continuous 2-arm: Decision</strong> – posterior decision for mean difference.</li>
+      <li><strong>Continuous 2-arm: OC</strong> – OC simulation for continuous endpoints.</li>
+      <li><strong>Report</strong> – generate an HTML report summarizing the current session.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>2. Binary Endpoint<span class="tag">Response / Event</span></h2>
+    <h3>2.1 Data & Priors</h3>
+    <ul>
+      <li>Upload a CSV with columns <code>study</code>, <code>events</code>, <code>n</code>.</li>
+      <li>Choose whether to weight historical studies by sample size.</li>
+      <li>Specify current control data <code>(y_c, n_c)</code>.</li>
+      <li>Build either:
+        <ul>
+          <li><strong>rMAP prior</strong> – mixture of Beta posteriors plus a robust Beta(1,1) component.</li>
+          <li><strong>Power prior</strong> – Beta(a0,b0) with α-weighted historical counts.</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>2.2 Decision (Δ)</h3>
+    <p>
+      Compute posterior probability for superiority:
+      <code>P(Δ = p_t − p_c &gt; Δ*)</code>.
+      Specify:
+    </p>
+    <ul>
+      <li>Treatment data <code>(y_t, n_t)</code></li>
+      <li>Decision margin Δ*</li>
+      <li>Posterior probability threshold (e.g. 0.95)</li>
+      <li>Choice of control prior: rMAP or Power prior</li>
+    </ul>
+
+    <h3>2.3 Operating Characteristics (OC)</h3>
+    <p>
+      Define grids of true <code>p_c</code> and <code>p_t</code>, sample sizes, Δ*, and threshold.
+      The OC tab simulates many trials and reports:
+    </p>
+    <ul>
+      <li>Estimated probability of declaring efficacy by scenario.</li>
+      <li>Heatmaps of power / type I error across the grid.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>3. Continuous Two-Arm Endpoint<span class="tag">Normal</span></h2>
+    <h3>3.1 Data</h3>
+    <ul>
+      <li>Provide historical control summary: mean, variance, N.</li>
+      <li>Choose power prior weight α for continuous endpoints.</li>
+      <li>Provide current per-arm summaries: mean, variance, N.</li>
+      <li>Click “Build continuous posteriors” to store posteriors for both arms.</li>
+    </ul>
+
+    <h3>3.2 Decision</h3>
+    <p>
+      Evaluate posterior probability that the mean difference exceeds a margin:
+      <code>P(μ_t − μ_c &gt; Δ*)</code>.
+    </p>
+
+    <h3>3.3 Operating Characteristics</h3>
+    <p>
+      Define grids of true means (μ_c, μ_t), SDs, and design parameters. The app
+      simulates trials and estimates Pr(declare efficacy) for each scenario.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>4. Commensurate Prior (Stan)</h2>
+    <p>
+      The commensurate prior tab fits a hierarchical model that dynamically
+      determines how much the current control should borrow from historical
+      control via a commensurability parameter τ.
+    </p>
+    <ul>
+      <li>Input counts for historical, current control, and treatment.</li>
+      <li>Specify hyperparameters for τ (Gamma shape/rate).</li>
+      <li>Run the model and review the posterior of τ and Δ.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>5. Report</h2>
+    <p>
+      The Report tab renders an HTML report from a parameterised R Markdown
+      template. This can be archived, shared with collaborators, and used in
+      regulatory documentation.
+    </p>
+    <ul>
+      <li>Includes priors, posteriors, decisions, and OC tables/plots.</li>
+      <li>Reflects the current session’s parameters and results.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>6. Statistical Methods</h2>
+    <p>
+      A full statistical description (including formulas for rMAP, power prior,
+      commensurate prior, and continuous N–IG model) is provided in the
+      <strong>Statistical Methods</strong> document generated alongside the app
+      (see <code>reports/statistical_methods.Rmd</code>).
+    </p>
+  </div>
+</body>
+</html>
