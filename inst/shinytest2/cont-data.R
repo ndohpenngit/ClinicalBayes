@@ -1,0 +1,5 @@
+app <- AppDriver$new()
+app$set_inputs(alpha = 0.5)
+app$click("build")
+app$expect_values()
+app$expect_screenshot()

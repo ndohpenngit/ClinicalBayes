@@ -1,36 +1,52 @@
 /* ===========================================================
-   ClinicalBayes Theme — Light + Dark Mode with Info Icons
+   ClinicalBayes Theme — Light + Dark Mode (Production Final)
    =========================================================== */
 
-body, .main-header, .main-sidebar, .content-wrapper, .main-footer, .box, .modal-content {
-  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+body,
+.main-header,
+.main-sidebar,
+.content-wrapper,
+.main-footer,
+.box,
+.modal-content {
+  transition: background-color 0.3s ease,
+              color 0.3s ease,
+              border-color 0.3s ease;
 }
 
-/* --------------------- Light Mode ------------------------- */
+/* ===========================================================
+   LIGHT MODE
+   =========================================================== */
 
 body {
   background: #f7f7f7;
   color: #222;
 }
 
-.main-header, .main-sidebar, .content-wrapper, .main-footer, .box {
+.main-header,
+.main-sidebar,
+.content-wrapper,
+.main-footer,
+.box {
   background-color: #ffffff;
   color: #222;
   border-color: #ddd;
 }
 
-/* Box header styling */
+/* Box header */
 .box .box-header {
   background: linear-gradient(#f9f9f9, #ececec);
   color: #222;
-  padding-right: 45px; /* space for info icon */
   border-bottom: 1px solid #ccc;
+  padding-right: 45px;
+  position: relative;
 }
 
-/* Info icon (light mode) */
+/* Info icon */
 .cb-info-icon {
-  float: right;
-  margin-left: 10px;
+  position: absolute;
+  right: 15px;
+  top: 10px;
   font-size: 16px;
   color: #0073b7 !important;
   cursor: pointer;
@@ -42,13 +58,29 @@ body {
   transform: scale(1.15);
 }
 
-/* Mini glow */
 .cb-info-icon i {
   text-shadow: 0 0 3px rgba(0,0,0,0.15);
 }
 
+.cb-info-icon:focus {
+  outline: 2px solid #0073b7;
+  outline-offset: 2px;
+}
 
-/* --------------------- Dark Mode ------------------------- */
+/* Buttons */
+.btn-info {
+  background-color: #00a8a8;
+  border-color: #00a8a8;
+}
+
+.btn-info:hover {
+  background-color: #008c8c;
+  border-color: #008c8c;
+}
+
+/* ===========================================================
+   DARK MODE
+   =========================================================== */
 
 body.dark {
   background: #0d1f2d !important;
@@ -64,6 +96,10 @@ body.dark .main-footer {
   border-color: #223344 !important;
 }
 
+body.dark .main-header .logo {
+  background-color: #0d1f2d !important;
+}
+
 body.dark .box {
   background: #1a2a3a !important;
   border-color: #223344 !important;
@@ -74,32 +110,24 @@ body.dark .box .box-header {
   background: linear-gradient(#1c2e3d, #14222f) !important;
   color: #f0f0f0 !important;
   border-bottom: 1px solid #223344;
-  padding-right: 45px;
 }
 
-/* Info icon (dark mode) */
+/* Info icon (dark) */
 body.dark .cb-info-icon {
   color: #66cfff !important;
-  text-shadow: 0 0 4px rgba(0, 170, 255, 0.4);
+  text-shadow: 0 0 4px rgba(0,170,255,0.4);
 }
 
 body.dark .cb-info-icon:hover {
   color: #99e2ff !important;
-  transform: scale(1.15);
 }
 
-/* Buttons */
-.btn-info {
-  background-color: #00a8a8;
-  border-color: #00a8a8;
+/* Sidebar */
+body.dark .sidebar-menu > li > a {
+  color: #c8d4e0 !important;
 }
 
-.btn-info:hover {
-  background-color: #008c8c;
-  border-color: #008c8c;
-}
-
-/* Modal dark mode */
+/* Modals */
 body.dark .modal-content {
   background-color: #1a2a3a !important;
   color: #f0f0f0 !important;
@@ -109,26 +137,61 @@ body.dark .modal-backdrop {
   background-color: rgba(13,31,45,0.8) !important;
 }
 
-/* Documentation tab content iframe fixes */
-#docs_manual iframe,
-#docs_manual {
+/* ===========================================================
+   TABLES (DT)
+   =========================================================== */
+
+body.dark table.dataTable {
+  color: #f0f0f0 !important;
+}
+
+body.dark table.dataTable thead {
+  background-color: #1c2e3d !important;
+}
+
+body.dark table.dataTable tbody tr {
+  background-color: #1a2a3a !important;
+}
+
+/* ===========================================================
+   PLOTS
+   =========================================================== */
+
+.plot-container {
+  background: transparent;
+}
+
+body.dark .plot-container {
+  background-color: #1a2a3a;
+}
+
+/* ===========================================================
+   DOCUMENTATION IFRAME
+   =========================================================== */
+
+iframe {
   background: transparent !important;
 }
 
-/* Sidebar links */
-body.dark .sidebar-menu > li > a {
-  color: #c8d4e0 !important;
-}
+/* ===========================================================
+   PDF / SCREENSHOT HARDENING
+   =========================================================== */
 
-/* --------------------- Header Icon Alignment ------------------------- */
+@media print {
+  body,
+  .box,
+  .content-wrapper {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
 
-/* Ensure icons don't overlap content */
-.box-header .cb-info-icon {
-  position: absolute;
-  right: 15px;
-  top: 10px;
-}
+  .cb-info-icon {
+    display: none !important;
+  }
 
-.box-header {
-  position: relative;
+  .main-sidebar,
+  .main-header,
+  .main-footer {
+    display: none !important;
+  }
 }

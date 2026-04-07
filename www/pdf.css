@@ -1,0 +1,15 @@
+body {
+  font-family: "Times New Roman", serif;
+}
+
+.plot-container {
+  background: white !important;
+}
+
+.shiny-plot-output {
+  border: none !important;
+}
+
+.box {
+  box-shadow: none !important;
+}

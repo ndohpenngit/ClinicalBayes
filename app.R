@@ -10,61 +10,39 @@ library(shinyjs)
 library(DT)
 library(ggplot2)
 library(cmdstanr)
-tryCatch({
-  # CmdStan path
-  cmdstanr::set_cmdstan_path(path = cmdstanr::cmdstan_path())
-}, error = function(e) {
-  warning("Failed to set cmdstanr path: ", conditionMessage(e))
-})
 library(bayesplot)
 library(DiagrammeR)
 library(pagedown)
-# install.packages("rsvg")
 library(tinytex)
-# tinytex::install_tinytex()    # installs TinyTeX (pdflatex)
+library(testthat)
 
 # -----------------------------
-# Ensure www/ exists and copy logo if present in project root
+# CmdStan
+# -----------------------------
+tryCatch({
+  cmdstanr::set_cmdstan_path(cmdstanr::cmdstan_path())
+}, error = function(e) {
+  warning("CmdStan not available: ", conditionMessage(e))
+})
+
+# -----------------------------
+# www/
 # -----------------------------
 dir.create("www", showWarnings = FALSE)
-
-# If user put a logo.png in project root, copy it to www/ for packaging
-if (!file.exists(file.path("www", "logo.png")) && file.exists("logo.png")) {
-  tryCatch({
-    file.copy("logo.png", file.path("www", "logo.png"), overwrite = TRUE)
-    message("Copied logo.png -> www/logo.png")
-  }, error = function(e) {
-    message("Failed to copy logo: ", conditionMessage(e))
-  })
+if (!file.exists("www/logo.png") && file.exists("logo.png")) {
+  file.copy("logo.png", "www/logo.png", overwrite = TRUE)
 }
 
-# --- source utility and module files (only if present) ---
-src_if_exists <- function(path) {
-  if (file.exists(path)) {
-    tryCatch({
-      source(path)
-    }, error = function(e) {
-      warning("Error sourcing ", path, " : ", conditionMessage(e))
-    })
-  } else {
-    warning("File not found (skipping): ", path)
-  }
-}
+# -----------------------------
+# Source helpers & modules
+# -----------------------------
 
-# Core helpers / modules
-source("R/utils_bayes.R")
-source("R/utils_ui.R")
-source("R/modules/mod_data.R")
-source("R/modules/mod_binary_priors.R")
-source("R/modules/mod_bin_decision.R")
-source("R/modules/mod_bin_oc.R")
-source("R/modules/mod_bin_commensurate.R")
-source("R/modules/mod_report.R")
-source("R/modules/mod_cont2a_data.R")
-source("R/modules/mod_cont2a_decision.R")
-source("R/modules/mod_cont2a_oc.R")
-source("R/modules/mod_workflow.R")
-# source("R/workflow_diag.R")
+list.files("R", pattern = "^utils_.*\\.R$", full.names = TRUE) |>
+  lapply(source)
+
+list.files("R/modules", pattern = "^mod_.*\\.R$", full.names = TRUE) |>
+  lapply(source)
+
 source("www/build_manual.R")
 
 # -------------------------------
@@ -76,11 +54,7 @@ ui <- dashboardPage(
   dashboardHeader(
     title = tags$div(
       class = "cb-header-title",
-      tags$img(
-        src   = "logo.png",
-        height = "35px",
-        style  = "margin-right: 10px;"
-      ),
+      tags$img(src   = "logo.png", height = "35px", style  = "margin-right: 10px;"),
       tags$span("ClinicalBayes")
     )
   ),
@@ -97,18 +71,18 @@ ui <- dashboardPage(
       # -------- Binary group --------
       menuItem(
         "Binary endpoints", icon = icon("vial"), startExpanded = FALSE,
-        menuSubItem("1. Priors", tabName = "binary", icon = icon("sliders")),
-        menuSubItem("2. Decision (Δ)", tabName = "decision", icon = icon("balance-scale-right")),
-        menuSubItem("3. Operating characteristics", tabName = "oc", icon = icon("chart-area")),
-        menuSubItem("4. Commensurate (Stan)", tabName = "comm", icon = icon("project-diagram"))
+        menuSubItem("1. Data & Priors", tabName = "binary"),
+        menuSubItem("2. Decision (Δ)", tabName = "decision"),
+        menuSubItem("3. Operating characteristics", tabName = "oc"),
+        menuSubItem("4. Commensurate (Stan)", tabName = "comm")
       ),
 
       # -------- Continuous group --------
       menuItem(
         "Continuous endpoints", icon = icon("chart-line"), startExpanded = FALSE,
-        menuSubItem("1. Priors & Posterior", tabName = "cont2a_data", icon = icon("sliders")),
-        menuSubItem("2. Decision (Δ)", tabName = "cont2a_dec", icon = icon("balance-scale")),
-        menuSubItem("3. Operating characteristics", tabName = "cont2a_oc",  icon = icon("chart-line"))
+        menuSubItem("1. Priors & Posterior", tabName = "cont2a"),
+        menuSubItem("2. Decision (Δ)", tabName = "cont2a_dec"),
+        menuSubItem("3. Operating characteristics", tabName = "cont2a_oc")
       ),
 
       # -------- Other --------
@@ -151,6 +125,7 @@ ui <- dashboardPage(
     tags$head(
       # external CSS
       tags$link(rel = "stylesheet", type = "text/css", href = "theme.css"),
+      tags$link(rel = "stylesheet", type = "text/css", href = "pdf.css"),
 
       # JS: handle dark toggle + icon swap
       tags$script(HTML("
@@ -178,17 +153,20 @@ ui <- dashboardPage(
     ),
 
     tabItems(
-      # module UIs (these will warn in console if module files not found)
-      if (exists("data_ui")) data_ui("data_1"),
-      if (exists("binary_priors_ui")) binary_priors_ui("binary_priors_1"),
-      if (exists("decision_ui")) decision_ui("decision_1"),
-      if (exists("oc_ui")) oc_ui("oc_1"),
-      if (exists("comm_ui")) comm_ui("comm_1"),
-      if (exists("cont2a_data_ui")) cont2a_data_ui("cont2a_data_1"),
-      if (exists("cont2a_decision_ui")) cont2a_decision_ui("cont2a_dec_1"),
-      if (exists("cont2a_oc_ui")) cont2a_oc_ui("cont2a_oc_1"),
-      if (exists("workflow_ui")) workflow_ui("workflow_1"),
-      if (exists("report_ui")) report_ui("report_1"),
+      # module UIs
+      data_ui("data_1"),
+
+      binary_priors_ui("binary_priors_1"),
+      decision_ui("decision_1"),
+      oc_ui("oc_1"),
+      comm_ui("comm_1"),
+
+      cont2a_data_ui("cont2a_data_1"),
+      cont2a_decision_ui("cont2a_dec_1"),
+      cont2a_oc_ui("cont2a_oc_1"),
+
+      workflow_ui("workflow_1"),
+      report_ui("report_1"),
 
       # --- Documentation tab ---
       tabItem(
@@ -237,9 +215,12 @@ server <- function(input, output, session) {
   app_rv <- reactiveValues(
     datasets  = list(),
     current_dataset = NULL,
+    hist_df      = NULL,
+    hist_summary = NULL,
+    hist_raw  = NULL,
+    hist_uploaded = NULL,
 
-    # binary
-    hist_df   = NULL,
+    # binary two-arm
     rmap      = NULL,
     pp        = NULL,
     ctrl_post = NULL,
@@ -248,22 +229,27 @@ server <- function(input, output, session) {
     comm      = NULL,
 
     # continuous two-arm
-    cont_ctrl_post = NULL,
-    cont_trt_post  = NULL,
-    cont2a_oc      = NULL
+    cont_current = NULL,
+    cont_ctrl_prior = NULL,
+    cont_ctrl_post  = NULL,
+    cont_trt_post   = NULL,
+    cont_ess        = NULL
   )
 
-  # Modules (call only if server functions exist)
-  if (exists("data_server")) data_server("data_1", app_rv)
-  if (exists("binary_priors_server")) binary_priors_server("binary_priors_1", app_rv)
-  if (exists("decision_server")) decision_server("decision_1", app_rv)
-  if (exists("oc_server")) oc_server("oc_1", app_rv)
-  if (exists("comm_server")) comm_server("comm_1", app_rv)
-  if (exists("cont2a_data_server")) cont2a_data_server("cont2a_data_1", app_rv)
-  if (exists("cont2a_decision_server")) cont2a_decision_server("cont2a_dec_1", app_rv)
-  if (exists("cont2a_oc_server")) cont2a_oc_server("cont2a_oc_1", app_rv)
-  if (exists("report_server")) report_server("report_1", app_rv)
-  if (exists("workflow_server")) workflow_server("workflow_1", dark_reactive = dark_state)
+  # Call Modules
+  data_server("data_1", app_rv)
+
+  binary_priors_server("binary_priors_1", app_rv)
+  decision_server("decision_1", app_rv)
+  oc_server("oc_1", app_rv)
+  comm_server("comm_1", app_rv)
+
+  cont2a_data_server("cont2a_data_1", app_rv)
+  cont2a_decision_server("cont2a_dec_1", app_rv)
+  cont2a_oc_server("cont2a_oc_1", app_rv)
+
+  report_server("report_1", app_rv)
+  workflow_server("workflow_1", dark_reactive = dark_state)
 
   # Documentation iframe UI
   output$docs_iframe <- renderUI({
