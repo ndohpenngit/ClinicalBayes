@@ -157,12 +157,11 @@ data_ui <- function(id) {
         title = "Notes:",
         tags$ul(
           tags$li("Add pop-up if user clicks 'Save dataset' without uploading a file first."),
-          tag$li("Ensure correct data types is available in hist_summary (events, n as integers) for downstream modules."),
+          tags$li("Ensure correct data types is available in hist_summary (events, n as integers) for downstream modules."),
           tags$li("Allow user to specify which columns to use for study/events/n if auto-detection fails? (advanced)"),
-          tag$li("DEBUG Warning: Error in cont_draw_delta: could not find function 'cont_draw_delta'. See mod_cont2a_decision.R")
+          tags$li("DEBUG Warning: Error in cont_draw_delta: could not find function 'cont_draw_delta'. See mod_cont2a_decision.R")
         )
       )
-
     )
   )
 }
@@ -191,7 +190,6 @@ data_server <- function(id, app_rv) {
       req(input$hist_file)
       tryCatch({
         df <- read.csv(input$hist_file$datapath, stringsAsFactors = FALSE)
-        # trim names & lower-case for detection convenience will be done in detect_schema
         names(df) <- trimws(names(df))
         df
       }, error = function(e) {
