@@ -156,8 +156,7 @@ data_ui <- function(id) {
         width = 12, status = NULL, solidHeader = TRUE,
         title = "Notes:",
         tags$ul(
-          tags$li("Add pop-up if user clicks 'Save dataset' without uploading a file first."),
-          tags$li("Ensure correct data types is available in hist_summary (events, n as integers) for downstream modules."),
+          # tags$li("Add pop-up if user clicks 'Save dataset' without uploading a file first."),
           tags$li("Allow user to specify which columns to use for study/events/n if auto-detection fails? (advanced)"),
           tags$li("DEBUG Warning: Error in cont_draw_delta: could not find function 'cont_draw_delta'. See mod_cont2a_decision.R")
         )
@@ -187,7 +186,8 @@ data_server <- function(id, app_rv) {
 
     # --- Read uploaded CSV (reactive) ---
     uploaded_df <- reactive({
-      req(input$hist_file)
+      if (is.null(input$hist_file)) return(NULL)
+
       tryCatch({
         df <- read.csv(input$hist_file$datapath, stringsAsFactors = FALSE)
         names(df) <- trimws(names(df))
@@ -229,10 +229,16 @@ data_server <- function(id, app_rv) {
     # --- Save dataset into app_rv$datasets (named store) ---
     observeEvent(input$save_dataset, {
       df <- uploaded_df()
+
       if (is.null(df)) {
-        showNotification("No uploaded file to save", type = "error")
+        showModal(modalDialog(
+          title = "Missing File",
+          "You must upload a CSV file before you can save a dataset.",
+          easyClose = TRUE, footer = modalButton("Close")
+        ))
         return()
       }
+
       name <- trimws(input$save_name)
       if (name == "") {
         showNotification("Please provide a dataset name", type = "error")

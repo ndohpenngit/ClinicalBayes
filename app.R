@@ -312,7 +312,7 @@ server <- function(input, output, session) {
                   "controlling the effective borrowing."),
           tags$li(tags$b("Decision rule:"), " posterior probability ",
                   HTML("P(Δ = p<sub>t</sub> − p<sub>c</sub> &gt; Δ*)")),
-          tags$li(tags$b("Operating characteristics:"), " Monte Carlo simulation over grids of true (p_c, p_t), ",
+          tags$li(tags$b("Operating characteristics:"), HTML("Monte Carlo simulation over grids of true (p<sub>c</sub>, p<sub>t</sub>), "),
                   "reporting Pr(declare efficacy).")
         ),
 
@@ -326,11 +326,11 @@ server <- function(input, output, session) {
         tags$h4("Continuous endpoint (two-arm)"),
         tags$ul(
           tags$li(tags$b("Normal–Inverse-Gamma (N-IG) model:"), " unknown mean and variance per arm."),
-          tags$li(tags$b("Control power prior:"), " historical control summary (Ŷ_H, S²_H, N_H) ",
+          tags$li(tags$b("Control power prior:"), HTML("historical control summary (Ŷ<sub>H</sub>, S²<sub>H</sub>, N<sub>H</sub>)"),
                   "enter a power prior on the control mean and variance."),
           tags$li(tags$b("Treatment prior:"), " weak N-IG baseline updated by current treatment data."),
           tags$li(tags$b("Decision rule:"), HTML("posterior P(μ<sub>t</sub> − μ<sub>c</sub> &gt; Δ*).")),
-          tags$li(tags$b("Continuous OC:"), " simulation over grids of true (μ_c, μ_t) with specified SDs, ",
+          tags$li(tags$b("Continuous OC:"), HTML("simulation over grids of true (μ<sub>c</sub>, μ<sub>t</sub>) with specified SDs, "),
                   "reporting Pr(declare efficacy).")
         ),
 
