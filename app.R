@@ -9,7 +9,7 @@ library(shinycssloaders)
 library(shinyjs)
 library(DT)
 library(ggplot2)
-library(cmdstanr)
+library(rstan)
 library(bayesplot)
 library(DiagrammeR)
 library(pagedown)
@@ -17,16 +17,14 @@ library(tinytex)
 library(testthat)
 
 # -----------------------------
-# CmdStan
+# Stan Configuration
 # -----------------------------
-tryCatch({
-  cmdstanr::set_cmdstan_path(cmdstanr::cmdstan_path())
-}, error = function(e) {
-  warning("CmdStan not available: ", conditionMessage(e))
-})
+# For rstan, we set these options for better performance
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
 
 # -----------------------------
-# www/
+# Directory Setup (www/)
 # -----------------------------
 dir.create("www", showWarnings = FALSE)
 if (!file.exists("www/logo.png") && file.exists("logo.png")) {
@@ -211,32 +209,48 @@ ui <- dashboardPage(
 # -------------------------------
 server <- function(input, output, session) {
 
-  # Session-specific shared state
+  # # Session-specific shared state
+  # app_rv <- reactiveValues(
+  #   datasets  = list(),
+  #   current_dataset = NULL,
+  #   hist_df      = NULL,
+  #   hist_summary = NULL,
+  #   hist_raw  = NULL,
+  #   hist_uploaded = NULL,
+  #
+  #   # binary two-arm
+  #   rmap      = NULL,
+  #   pp        = NULL,
+  #   ctrl_post = NULL,
+  #   decision  = NULL,
+  #   oc        = NULL,
+  #   comm      = NULL,
+  #
+  #   # continuous two-arm
+  #   cont_current = NULL,
+  #   cont_ctrl_prior = NULL,
+  #   cont_ctrl_post  = NULL,
+  #   cont_trt_post   = NULL,
+  #   cont_ess        = NULL
+  # )
+
+  # Centralized Shared State
   app_rv <- reactiveValues(
-    datasets  = list(),
+    datasets = list(),
     current_dataset = NULL,
-    hist_df      = NULL,
-    hist_summary = NULL,
-    hist_raw  = NULL,
-    hist_uploaded = NULL,
-
-    # binary two-arm
-    rmap      = NULL,
-    pp        = NULL,
-    ctrl_post = NULL,
-    decision  = NULL,
-    oc        = NULL,
-    comm      = NULL,
-
-    # continuous two-arm
+    hist_df = NULL,
+    # Binary State
+    rmap = NULL, pp = NULL, ctrl_post = NULL,
+    decision = NULL, oc = NULL, comm = NULL,
+    # Continuous State
     cont_current = NULL,
     cont_ctrl_prior = NULL,
-    cont_ctrl_post  = NULL,
-    cont_trt_post   = NULL,
-    cont_ess        = NULL
+    cont_ctrl_post = NULL,
+    cont_trt_post = NULL,
+    cont_ess = NULL
   )
 
-  # Call Modules
+  # Call Modules Servers
   data_server("data_1", app_rv)
 
   binary_priors_server("binary_priors_1", app_rv)
@@ -280,6 +294,16 @@ server <- function(input, output, session) {
     }
   })
 
+  # # Manual Iframe Rendering
+  # output$docs_iframe <- renderUI({
+  #   if (file.exists("www/clinicalbayes_manual.html")) {
+  #     tags$iframe(src = "clinicalbayes_manual.html",
+  #                 style = "width:100%; height: calc(100vh - 230px); border:none; overflow:auto;")
+  #   } else {
+  #     div(class = "alert alert-warning", "Manual HTML file not found in www/ folder.")
+  #   }
+  # })
+
   # per-session dark-mode state
   dark_state <- reactiveVal(FALSE)
 
@@ -299,9 +323,7 @@ server <- function(input, output, session) {
       tagList(
         tags$h4("About"),
         tags$p(
-          "ClinicalBayes is a Shiny dashboard for Bayesian clinical trial design ",
-          "and analysis with dynamic borrowing and operating characteristics ",
-          "for binary and continuous endpoints."
+          "ClinicalBayes facilitates Bayesian dynamic borrowing from historical controls to enhance trial power."
         ),
 
         tags$h4("Binary endpoint (response / event)"),

@@ -9,22 +9,13 @@ binary_priors_ui <- function(id) {
     fluidRow(
       # Configuration Box
       box(width = 12, status = "primary", solidHeader = TRUE,
-          title = "Binary Trial & Prior Management",
+          title = "Binary Control Prior Management",
           column(5,
                  wellPanel(
-                   h4("Current Trial Data"),
-                   fluidRow(
-                     column(6,
-                            h5(tags$b("Control Arm")),
-                            numericInput(ns("curr_events"), "Events (y_c)", value = 12, min = 0),
-                            numericInput(ns("curr_n"), "Total N (n_c)", value = 50, min = 1)
-                     ),
-                     column(6,
-                            h5(tags$b("Treatment Arm")),
-                            numericInput(ns("trt_events"), "Events (y_t)", value = 15, min = 0),
-                            numericInput(ns("trt_n"), "Total N (n_t)", value = 50, min = 1)
-                     )
-                   )
+                   h4("Current Trial: Control Arm"),
+                   p(tags$small("Enter current control data to build the borrowed posterior.")),
+                   numericInput(ns("curr_events"), "Control Events (y_c)", value = 12, min = 0),
+                   numericInput(ns("curr_n"), "Control Total N (n_c)", value = 50, min = 1)
                  )),
           column(7,
                  h4("Methodology Selection (Control Borrowing)"),
@@ -34,14 +25,14 @@ binary_priors_ui <- function(id) {
                               inline = TRUE),
                  uiOutput(ns("method_controls_ui")),
                  hr(),
-                 actionButton(ns("build_all"), "Build Prior & Save Trial Data",
+                 actionButton(ns("build_all"), "Build Prior & Sync Control Data",
                               class = "btn-success", icon = icon("gears"), width = "100%")
           )
       )
     ),
 
     fluidRow(
-      # Executive Summary Boxes
+      # Executive Summary Boxes - Focused on Control Arm Information
       valueBoxOutput(ns("ess_prior_box"), width = 4),
       valueBoxOutput(ns("ess_current_box"), width = 4),
       valueBoxOutput(ns("ess_total_box"), width = 4)
@@ -67,16 +58,13 @@ binary_priors_server <- function(id, app_rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Reactive state for objects
     local_rv <- reactiveValues(active_prior = NULL, active_post = NULL)
 
-    # Clean UI on method switch
     observeEvent(input$prior_method, {
       local_rv$active_prior <- NULL
       local_rv$active_post  <- NULL
     })
 
-    # Method-specific inputs
     output$method_controls_ui <- renderUI({
       if (input$prior_method == "rmap") {
         sliderInput(ns("robust_w"), "Robustness weight", min = 0, max = 0.5, value = 0.1, step = 0.05)
@@ -85,12 +73,11 @@ binary_priors_server <- function(id, app_rv) {
       }
     })
 
-    # Main Build Logic
     observeEvent(input$build_all, {
       df <- app_rv$hist_summary
       validate(need(!is.null(df), "Please load historical data in the Data tab first."))
 
-      # 1. Handle Control Prior/Posterior
+      # 1. Handle Control Prior/Posterior logic
       if (input$prior_method == "rmap") {
         base_mix <- make_hist_mix(events = df$events, n = df$n, weight_by_n = TRUE)
         prior <- robustify_mix(base_mix, robust_w = input$robust_w)
@@ -111,33 +98,30 @@ binary_priors_server <- function(id, app_rv) {
         app_rv$ctrl_post      <- list(type = "pp", obj = post)
       }
 
-      # 2. Store Current Trial Data (Both Arms) for Decision/OC Tabs
-      app_rv$current_trial <- list(
-        ctrl = list(y = input$curr_events, n = input$curr_n),
-        trt  = list(y = input$trt_events,  n = input$trt_n)
-      )
+      # 2. Sync Control Data (Treatment data is handled in mod_bin_decision.R)
+      app_rv$current_trial_control <- list(y = input$curr_events, n = input$curr_n)
 
-      showNotification("Prior built and trial data synchronized.", type = "message")
+      showNotification("Control prior built and synchronized for analysis.", type = "message")
     })
 
-    # --- ESS Boxes ---
+    # --- Calibrated ESS Boxes ---
     output$ess_prior_box <- renderValueBox({
       req(local_rv$active_prior)
       val <- if(input$prior_method == "rmap") ess_mix(local_rv$active_prior) else (local_rv$active_prior$a + local_rv$active_prior$b)
-      valueBox(round(as.numeric(val)[1], 1), "Control Prior ESS", icon = icon("history"), color = "blue")
+      valueBox(round(as.numeric(val)[1], 1), "Borrowed ESS (Historical)", icon = icon("history"), color = "blue")
     })
 
     output$ess_current_box <- renderValueBox({
-      valueBox(input$curr_n + input$trt_n, "Total Trial N (C+T)", icon = icon("vial"), color = "purple")
+      valueBox(input$curr_n, "Current Control N", icon = icon("user-check"), color = "purple")
     })
 
     output$ess_total_box <- renderValueBox({
       req(local_rv$active_post)
       val <- if(input$prior_method == "rmap") ess_mix(local_rv$active_post) else (local_rv$active_post$a + local_rv$active_post$b)
-      valueBox(round(as.numeric(val)[1], 1), "Control Total ESS", icon = icon("plus-circle"), color = "green")
+      valueBox(round(as.numeric(val)[1], 1), "Total Control ESS (Combined)", icon = icon("plus-circle"), color = "green")
     })
 
-    # --- Summaries ---
+    # --- Summaries & Plots ---
     output$prior_txt <- renderText({
       req(local_rv$active_prior)
       if(input$prior_method == "rmap") {
@@ -160,7 +144,6 @@ binary_priors_server <- function(id, app_rv) {
       }
     })
 
-    # --- Plots ---
     output$prior_plot <- renderPlot({
       req(local_rv$active_prior)
       if (input$prior_method == "rmap") plot_density_mix(local_rv$active_prior, "Control Prior Density")

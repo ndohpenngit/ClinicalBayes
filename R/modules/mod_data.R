@@ -123,7 +123,7 @@ aggregate_raw_to_summary <- function(df) {
 data_ui <- function(id) {
   ns <- NS(id)
   tabItem(
-    tabName = "data",
+    tabName = "data", # Matches sidebar tabItem name in app.R
     fluidRow(
       box(
         width = 4, status = "primary", solidHeader = TRUE,
@@ -149,18 +149,19 @@ data_ui <- function(id) {
         hr(),
         h5("Preview / Active dataset:"),
         DTOutput(ns("hist_tbl")) %>% withSpinner()
-      ),
-
-      hr(),
-      box(
-        width = 12, status = NULL, solidHeader = TRUE,
-        title = "Notes:",
-        tags$ul(
-          # tags$li("Add pop-up if user clicks 'Save dataset' without uploading a file first."),
-          tags$li("Allow user to specify which columns to use for study/events/n if auto-detection fails? (advanced)"),
-          tags$li("DEBUG Warning: Error in cont_draw_delta: could not find function 'cont_draw_delta'. See mod_cont2a_decision.R")
-        )
       )
+      # ,
+      #
+      # hr(),
+      # box(
+      #   width = 12, status = NULL, solidHeader = TRUE,
+      #   title = "Notes:",
+      #   tags$ul(
+      #     # tags$li("Add pop-up if user clicks 'Save dataset' without uploading a file first."),
+      #     tags$li("Allow user to specify which columns to use for study/events/n if auto-detection fails? (advanced)"),
+      #     tags$li("DEBUG Warning: Error in cont_draw_delta: could not find function 'cont_draw_delta'. See mod_cont2a_decision.R")
+      #   )
+      # )
     )
   )
 }

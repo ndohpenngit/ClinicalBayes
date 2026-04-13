@@ -1,0 +1,10 @@
+name: ClinicalBayes
+title: ClinicalBayes
+username: npenn
+account: npenn
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 17122577
+bundleId: 11845078
+url: https://npenn.shinyapps.io/ClinicalBayes/
+version: 1
