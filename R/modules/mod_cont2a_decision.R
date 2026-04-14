@@ -7,7 +7,7 @@ cont2a_decision_ui <- function(id) {
   tabItem(
     tabName = "cont2a_dec",
     fluidRow(
-      # Left Column: Treatment Data & Decision Rules
+      # Left Column: Input Settings
       box(width = 4, title = "Treatment Data & Decision Rule",
           status = "primary", solidHeader = TRUE,
 
@@ -24,17 +24,39 @@ cont2a_decision_ui <- function(id) {
 
           actionButton(ns("run_decision"), "Compute Decision",
                        class = "btn-primary", width = "100%", icon = icon("bolt")),
-          hr(),
-          uiOutput(ns("decision_summary_ui"))
+
+          # Only show summary box if ready
+          conditionalPanel(
+            condition = "output['decision_ready']",
+            ns = ns,
+            hr(),
+            uiOutput(ns("decision_summary_ui"))
+          )
       ),
 
-      # Right Column: Visual Analysis
+      # Right Column: Visual Analysis (Conditional)
       box(width = 8, title = "Posterior Analysis of Difference (Δ = μ_t - μ_c)",
           status = "primary", solidHeader = TRUE,
-          plotOutput(ns("delta_plot"), height = "350px") %>% withSpinner(),
-          hr(),
-          tags$b("Interpretation:"),
-          tags$p("The distribution shows the uncertainty in the treatment effect (difference in means) after incorporating historical control data and current trial results.")
+
+          conditionalPanel(
+            condition = "output['decision_ready']",
+            ns = ns,
+            plotOutput(ns("delta_plot"), height = "350px") %>% withSpinner(),
+            hr(),
+            tags$b("Interpretation:"),
+            tags$p("The distribution shows the uncertainty in the treatment effect (difference in means) after incorporating historical control data and current trial results.")
+          ),
+
+          # Placeholder
+          conditionalPanel(
+            condition = "!output['decision_ready']",
+            ns = ns,
+            div(style = "height: 400px; display: flex; align-items: center; justify-content: center; color: #999; flex-direction: column;",
+                icon("chart-line", class = "fa-4x"),
+                h4("Analysis Ready"),
+                p("Build the Continuous Prior first, then click 'Compute Decision' to view results.")
+            )
+          )
       )
     )
   )
@@ -44,45 +66,68 @@ cont2a_decision_server <- function(id, app_rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    decision_draws <- eventReactive(input$run_decision, {
-      # 1. VALIDATION
-      validate(
-        need(!is.null(app_rv$cont_ctrl_post), "Please build the Historical Prior in 'Data & Priors' first.")
-      )
+    # Local state for result tracking
+    local_rv <- reactiveValues(
+      ready = FALSE,
+      delta_samples = NULL
+    )
 
-      # 2. SAMPLING
-      n_samps <- 10000
-
-      # Sample Control Posterior (assuming NIG distribution from previous module)
-      # We use your helper function cont_draw_delta or manual sampling:
-      post_c <- app_rv$cont_ctrl_post
-
-      # Sample Treatment Posterior (Flat Prior: m0=0, k0=0.001, a0=2, b0=1)
-      prior_trt_flat <- safe_nig(m0 = 0, k0 = 0.001, a0 = 2, b0 = 1)
-      var_t <- (input$sd_t)^2
-      post_t <- cont_posterior(prior_trt_flat, input$mean_t, var_t, input$n_t)
-
-      # Generate Delta Samples (μ_t - μ_c)
-      delta_samples <- cont_draw_delta(post_c, post_t, S = n_samps)
-
-      # 3. GLOBAL STATE SYNC
-      app_rv$cont_decision <- list(
-        delta_star = input$delta_star,
-        p_cut = input$p_cut
-      )
-
-      app_rv$cont_current_trt <- list(
-        mean = input$mean_t,
-        sd = input$sd_t,
-        n = input$n_t
-      )
-
-      return(delta_samples)
+    # Reset result state if inputs change
+    observeEvent(list(input$mean_t, input$sd_t, input$n_t, input$delta_star, input$p_cut), {
+      local_rv$ready <- FALSE
+      local_rv$delta_samples <- NULL
     })
 
-    # Color-coded Decision Summary UI
+    # Export state to UI
+    output$decision_ready <- reactive({ local_rv$ready })
+    outputOptions(output, "decision_ready", suspendWhenHidden = FALSE)
+
+    # --- THE TRIGGER ---
+    observeEvent(input$run_decision, {
+
+      # 1. GATEKEEPER VALIDATION
+      if (is.null(app_rv$hist_df) || app_rv$hist_type != "continuous") {
+        showNotification("Data Mismatch: Please ensure a Continuous dataset is loaded.", type = "error")
+        return()
+      }
+      if (is.null(app_rv$cont_ctrl_post)) {
+        showNotification("Prior missing: Build the Historical Prior in 'Data & Priors' first.", type = "warning")
+        return()
+      }
+
+      # 2. CALCULATION & SAMPLING
+      tryCatch({
+        n_samps <- 10000
+        post_c <- app_rv$cont_ctrl_post
+
+        # Sample Treatment Posterior (Flat Prior: m0=0, k0=0.001, a0=2, b0=1)
+        prior_trt_flat <- safe_nig(m0 = 0, k0 = 0.001, a0 = 2, b0 = 1)
+        var_t <- (input$sd_t)^2
+        post_t <- cont_posterior(prior_trt_flat, input$mean_t, var_t, input$n_t)
+
+        # Generate Delta Samples (μ_t - μ_c) using your helper
+        samples_delta <- cont_draw_delta(post_c, post_t, S = n_samps)
+
+        # 3. SAVE TO LOCAL AND GLOBAL STATE
+        local_rv$delta_samples <- samples_delta
+
+        app_rv$cont_decision <- list(delta_star = input$delta_star, p_cut = input$p_cut)
+        app_rv$cont_current_trt <- list(mean = input$mean_t, sd = input$sd_t, n = input$n_t)
+
+        # 4. TRIGGER UI DISPLAY
+        local_rv$ready <- TRUE
+
+      }, error = function(e) {
+        showNotification(paste("Decision Error:", e$message), type = "error")
+        local_rv$ready <- FALSE
+      })
+    })
+
+    # --- OUTPUTS ---
     output$decision_summary_ui <- renderUI({
-      d <- req(decision_draws())
+      req(local_rv$delta_samples)
+      d <- local_rv$delta_samples
+
       prob <- mean(d > input$delta_star)
       success <- prob > input$p_cut
 
@@ -99,22 +144,43 @@ cont2a_decision_server <- function(id, app_rv) {
       )
     })
 
-    # ggplot2 Visual
     output$delta_plot <- renderPlot({
-      d <- req(decision_draws())
-      df <- data.frame(delta = d)
+      req(local_rv$delta_samples)
+      df <- data.frame(delta = local_rv$delta_samples)
+
+      # Calculate probability for the subtitle
+      prob_val <- mean(df$delta > input$delta_star)
+
+      # Generate density data for shading
+      dens <- density(df$delta)
+      df_dens <- data.frame(x = dens$x, y = dens$y)
+
+      # Subset for shading the area greater than the margin
+      df_success <- df_dens[df_dens$x > input$delta_star, ]
 
       ggplot(df, aes(x = delta)) +
-        geom_density(fill = "#3c8dbc", alpha = 0.3, color = "#3c8dbc", lwd = 1) +
-        geom_vline(xintercept = input$delta_star, color = "red", linetype = "dashed", lwd = 1.2) +
-        annotate("text", x = input$delta_star, y = 0, label = " Margin (Δ*)",
-                 hjust = -0.1, vjust = -1, color = "red", fontface = "bold") +
+        geom_density(fill = "grey90", color = "#3c8dbc", alpha = 0.5, lwd = 1) +
+        geom_area(data = df_success, aes(x = x, y = y),
+                  fill = "#28a745", alpha = 0.4) + # Success Area (Green)
+        geom_vline(xintercept = input$delta_star, color = "red",
+                   linetype = "dashed", lwd = 1.2) + # Decision Line
+
+        annotate("label", x = input$delta_star, y = max(df_dens$y) * 0.9,
+                 label = paste0("Margin (Δ*): ", input$delta_star),
+                 color = "red", fontface = "bold", fill = "white", alpha = 0.8) +
+
         theme_minimal() +
         labs(
           title = "Posterior Distribution of Mean Difference",
-          subtitle = paste0("Decision Margin (Δ*) = ", input$delta_star),
+          subtitle = paste0("Posterior Probability of Efficacy: ", round(prob_val * 100, 2), "%"),
           x = expression(paste("Effect Size (", Delta, " = ", mu[t], " - ", mu[c], ")")),
-          y = "Density"
+          y = "Posterior Density"
+        ) +
+        theme(
+          plot.title = element_text(face = "bold", size = 16),
+          subtitle = element_text(size = 12, color = "#444"),
+          axis.title = element_text(face = "italic"),
+          panel.grid.minor = element_blank()
         )
     })
   })

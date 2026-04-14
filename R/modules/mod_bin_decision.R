@@ -7,7 +7,7 @@ decision_ui <- function(id) {
   tabItem(
     tabName = "decision",
     fluidRow(
-      # Left Column: Treatment Data & Decision Rules
+      # Left Column: Input Settings
       box(width = 4, title = "Treatment Data & Decision Rule",
           status = "primary", solidHeader = TRUE,
 
@@ -23,17 +23,39 @@ decision_ui <- function(id) {
 
           actionButton(ns("run_decision"), "Compute Decision",
                        class = "btn-primary", width = "100%", icon = icon("bolt")),
-          hr(),
-          uiOutput(ns("decision_summary_ui"))
+
+          # Only show summary box if ready
+          conditionalPanel(
+            condition = "output['decision_ready']",
+            ns = ns,
+            hr(),
+            uiOutput(ns("decision_summary_ui"))
+          )
       ),
 
-      # Right Column: Visual Analysis
+      # Right Column: Visual Analysis (Conditional)
       box(width = 8, title = "Posterior Analysis of Difference (Δ = p_t - p_c)",
           status = "primary", solidHeader = TRUE,
-          plotOutput(ns("delta_plot"), height = "350px") %>% withSpinner(),
-          hr(),
-          tags$b("Interpretation:"),
-          tags$p("The distribution shows the uncertainty in the treatment effect after incorporating historical control data and current trial results.")
+
+          conditionalPanel(
+            condition = "output['decision_ready']",
+            ns = ns,
+            plotOutput(ns("delta_plot"), height = "350px") %>% withSpinner(),
+            hr(),
+            tags$b("Interpretation:"),
+            tags$p("The distribution shows the uncertainty in the treatment effect after incorporating historical control data and current trial results.")
+          ),
+
+          # Placeholder
+          conditionalPanel(
+            condition = "!output['decision_ready']",
+            ns = ns,
+            div(style = "height: 400px; display: flex; align-items: center; justify-content: center; color: #999; flex-direction: column;",
+                icon("chart-area", class = "fa-4x"),
+                h4("Ready to Analyze"),
+                p("Ensure Control Data is built, then click 'Compute Decision'")
+            )
+          )
       )
     )
   )
@@ -43,45 +65,70 @@ decision_server <- function(id, app_rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    decision_draws <- eventReactive(input$run_decision, {
-      # 1. VALIDATION
-      validate(
-        need(!is.null(app_rv$ctrl_post), "Please build the Historical Prior in 'Data & Priors' first.")
-      )
+    local_rv <- reactiveValues(
+      ready = FALSE,
+      results = NULL  # Store draws here instead of eventReactive
+    )
 
-      # 2. SAMPLING
-      # Control Sampling (From saved template)
-      cp <- app_rv$ctrl_post
-      n_samps <- 10000
-
-      p_c <- if(cp$type == "rmap") {
-        comp <- sample.int(length(cp$obj$w), n_samps, replace = TRUE, prob = cp$obj$w)
-        rbeta(n_samps, cp$obj$a[comp], cp$obj$b[comp])
-      } else {
-        rbeta(n_samps, cp$obj$a, cp$obj$b)
-      }
-
-      # Treatment Sampling (Flat Prior: Beta(1,1))
-      p_t <- rbeta(n_samps, input$trt_events + 1, input$trt_n - input$trt_events + 1)
-
-      # 3. GLOBAL STATE SYNC
-      # Store results for OC module and Reporting
-      app_rv$decision <- list(
-        delta_star = input$delta_star,
-        p_cut = input$p_cut
-      )
-
-      app_rv$current_trt <- list(
-        y = input$trt_events,
-        n = input$trt_n
-      )
-
-      list(p_c = p_c, p_t = p_t, delta = p_t - p_c)
+    # Reset state if inputs change
+    observeEvent(list(input$trt_events, input$trt_n, input$delta_star, input$p_cut), {
+      local_rv$ready <- FALSE
+      local_rv$results <- NULL
     })
 
-    # Color-coded Decision Summary UI
+    output$decision_ready <- reactive({ local_rv$ready })
+    outputOptions(output, "decision_ready", suspendWhenHidden = FALSE)
+
+    # --- THE TRIGGER ---
+    observeEvent(input$run_decision, {
+
+      # 1. GATEKEEPER VALIDATION
+      if (is.null(app_rv$hist_df) || app_rv$hist_type != "binary") {
+        showNotification("Invalid data type or missing dataset.", type = "error")
+        return()
+      }
+      if (is.null(app_rv$ctrl_post)) {
+        showNotification("Prior missing: Build the Historical Prior first.", type = "warning")
+        return()
+      }
+
+      # 2. CALCULATION
+      tryCatch({
+        cp <- app_rv$ctrl_post
+        n_samps <- 10000
+
+        # Control Sampling
+        p_c <- if(cp$type == "rmap") {
+          comp <- sample.int(length(cp$obj$w), n_samps, replace = TRUE, prob = cp$obj$w)
+          rbeta(n_samps, cp$obj$a[comp], cp$obj$b[comp])
+        } else {
+          rbeta(n_samps, cp$obj$a, cp$obj$b)
+        }
+
+        # Treatment Sampling
+        p_t <- rbeta(n_samps, input$trt_events + 1, input$trt_n - input$trt_events + 1)
+
+        # 3. SAVE TO LOCAL AND GLOBAL STATE
+        local_rv$results <- list(p_c = p_c, p_t = p_t, delta = p_t - p_c)
+
+        app_rv$decision <- list(delta_star = input$delta_star, p_cut = input$p_cut)
+        app_rv$current_trt <- list(y = input$trt_events, n = input$trt_n)
+
+        # 4. TRIGGER UI DISPLAY
+        local_rv$ready <- TRUE
+
+      }, error = function(e) {
+        showNotification(paste("Decision Error:", e$message), type = "error")
+        local_rv$ready <- FALSE
+      })
+    })
+
+    # --- OUTPUTS ---
+    # Now these depend on local_rv$results instead of an eventReactive
     output$decision_summary_ui <- renderUI({
-      d <- req(decision_draws())
+      req(local_rv$results)
+      d <- local_rv$results
+
       prob <- mean(d$delta > input$delta_star)
       success <- prob > input$p_cut
 
@@ -98,24 +145,42 @@ decision_server <- function(id, app_rv) {
       )
     })
 
-    # ggplot2 Visual
     output$delta_plot <- renderPlot({
-      d <- req(decision_draws())
-      df <- data.frame(delta = d$delta)
+      req(local_rv$results)
+      df <- data.frame(delta = local_rv$results$delta)
+
+      prob_val <- mean(df$delta > input$delta_star) # probability for the subtitle
+
+      # Create a subset for the "Success Area" shading
+      dens <- density(df$delta)
+      df_dens <- data.frame(x = dens$x, y = dens$y)
+      df_success <- df_dens[df_dens$x > input$delta_star, ]
 
       ggplot(df, aes(x = delta)) +
-        geom_density(fill = "#3c8dbc", alpha = 0.3, color = "#3c8dbc", lwd = 1) +
-        geom_vline(xintercept = input$delta_star, color = "red", linetype = "dashed", lwd = 1.2) +
-        annotate("text", x = input$delta_star, y = 0, label = " Margin (Δ*)",
-                 hjust = -0.1, vjust = -1, color = "red", fontface = "bold") +
+        geom_density(fill = "grey90", color = "#3c8dbc", alpha = 0.5, lwd = 1) +
+        geom_area(data = df_success, aes(x = x, y = y),
+                  fill = "#28a745", alpha = 0.4) + # Success Shading
+        geom_vline(xintercept = input$delta_star, color = "red", # Decision Line
+                   linetype = "dashed", lwd = 1.2) +
+
+        annotate("label", x = input$delta_star, y = max(df_dens$y) * 0.9,
+                 label = paste0("Margin: ", input$delta_star),
+                 color = "red", fontface = "bold", fill = "white", alpha = 0.8) +
+
         theme_minimal() +
+        scale_x_continuous(labels = scales::percent) +
         labs(
-          title = "Posterior Distribution of Treatment Effect",
-          subtitle = paste0("True Margin (Δ*) = ", input$delta_star),
+          title = "Posterior Distribution of Rate Difference",
+          subtitle = paste0("Posterior Probability of Efficacy: ", round(prob_val * 100, 2), "%"),
           x = expression(paste("Effect Size (", Delta, " = ", p[t], " - ", p[c], ")")),
-          y = "Density"
+          y = "Posterior Density"
         ) +
-        scale_x_continuous(labels = scales::percent)
+        theme(
+          plot.title = element_text(face = "bold", size = 16),
+          subtitle = element_text(size = 12, color = "#444"),
+          axis.title = element_text(face = "italic"),
+          panel.grid.minor = element_blank()
+        )
     })
   })
 }

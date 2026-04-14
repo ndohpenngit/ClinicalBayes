@@ -7,7 +7,7 @@ cont2a_data_ui <- function(id) {
   tabItem(
     tabName = "cont2a",
     fluidRow(
-      # Configuration Box - Focused on Control & Borrowing
+      # Configuration Box
       box(width = 12, status = "primary", solidHeader = TRUE,
           title = "Continuous Trial & Prior Management",
           column(5,
@@ -38,24 +38,43 @@ cont2a_data_ui <- function(id) {
       )
     ),
 
-    # Executive Summary Boxes
-    fluidRow(
-      valueBoxOutput(ns("ess_prior_box"), width = 4),
-      valueBoxOutput(ns("ess_current_box"), width = 4),
-      valueBoxOutput(ns("ess_total_box"), width = 4)
+    # --- CONDITIONAL RESULTS AREA ---
+    # Only show if 'ready' is true
+    conditionalPanel(
+      condition = "output['data_ready']",
+      ns = ns,
+
+      # Executive Summary Boxes
+      fluidRow(
+        valueBoxOutput(ns("ess_prior_box"), width = 4),
+        valueBoxOutput(ns("ess_current_box"), width = 4),
+        valueBoxOutput(ns("ess_total_box"), width = 4)
+      ),
+
+      # Diagnostics Layout
+      fluidRow(
+        box(width = 6, title = "Control Mean (μ) Density", status = "info", solidHeader = TRUE,
+            plotOutput(ns("mu_plot"), height = "280px") %>% withSpinner(),
+            tags$b("Summary:"),
+            verbatimTextOutput(ns("mu_txt"))
+        ),
+        box(width = 6, title = "Control Variance (σ²) Density", status = "success", solidHeader = TRUE,
+            plotOutput(ns("s2_plot"), height = "280px") %>% withSpinner(),
+            tags$b("Summary:"),
+            verbatimTextOutput(ns("s2_txt"))
+        )
+      )
     ),
 
-    # Diagnostics Layout
-    fluidRow(
-      box(width = 6, title = "Control Mean (μ) Density", status = "info", solidHeader = TRUE,
-          plotOutput(ns("mu_plot"), height = "280px") %>% withSpinner(),
-          tags$b("Summary:"),
-          verbatimTextOutput(ns("mu_txt"))
-      ),
-      box(width = 6, title = "Control Variance (σ²) Density", status = "success", solidHeader = TRUE,
-          plotOutput(ns("s2_plot"), height = "280px") %>% withSpinner(),
-          tags$b("Summary:"),
-          verbatimTextOutput(ns("s2_txt"))
+    # Placeholder when not "ready"
+    conditionalPanel(
+      condition = "!output['data_ready']",
+      ns = ns,
+      column(12, align = "center",
+             div(style = "padding: 50px; color: #999;",
+                 icon("arrow-up", class = "fa-3x"),
+                 h4("Configure parameters and click 'Build Prior' to view results.")
+             )
       )
     )
   )
@@ -65,20 +84,39 @@ cont2a_data_server <- function(id, app_rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Reactive state for calculated objects
-    local_rv <- reactiveValues(active_prior = NULL, active_post = NULL, ess = NULL)
+    # Added 'ready' to track state
+    local_rv <- reactiveValues(
+      active_prior = NULL,
+      active_post = NULL,
+      ess = NULL,
+      ready = FALSE
+    )
 
-    # Defensive Reset
+    # Defensive Reset when inputs change
     observeEvent(list(input$alpha, input$mean_c, input$sd_c, input$n_c), {
       local_rv$active_prior <- NULL
       local_rv$active_post  <- NULL
       local_rv$ess          <- NULL
+      local_rv$ready        <- FALSE
     })
+
+    # This hidden output is what the UI conditionalPanel listens to
+    output$data_ready <- reactive({
+      return(local_rv$ready)
+    })
+    # Disable suspend so UI knows state even if boxes aren't visible yet
+    outputOptions(output, "data_ready", suspendWhenHidden = FALSE)
 
     # Alpha Calibration Logic
     observeEvent(input$calibrate, {
+      # 1. GATEKEEPER VALIDATION
+      validate(
+        need(!is.null(app_rv$hist_df), "No data found. Please upload a dataset in the 'Data' tab."),
+        need(app_rv$hist_type == "continuous",
+             "Error: Calibration requires a Continuous dataset. Please load one in the 'Data' tab.")
+      )
+
       df <- get_current_hist_df(app_rv)
-      validate(need(nrow(df) > 0, "No historical data found. Please load data first."))
 
       grid <- calibrate_alpha_grid_cont(
         ybar = df$mean, s2 = df$sd^2, n = df$n,
@@ -92,37 +130,54 @@ cont2a_data_server <- function(id, app_rv) {
 
     # Main Build Logic
     observeEvent(input$build_all, {
+
+      # 1. VALIDATION CHECKs
+      if (is.null(app_rv$hist_df)) {
+        showNotification("No data found. Please upload a dataset first.", type = "error")
+        return()
+      }
+
+      if (app_rv$hist_type != "continuous") {
+        showNotification("Data Type Mismatch: This module requires Continuous data.", type = "error")
+        return()
+      }
+
+      if (input$sd_c <= 0) {
+        showNotification("Standard deviation must be positive.", type = "error")
+        return()
+      }
+
       df <- get_current_hist_df(app_rv)
-      validate(
-        need(nrow(df) > 0, "Please load historical data in the Data tab first."),
-        need(input$sd_c > 0, "Standard deviation must be positive.")
-      )
 
-      # 1. Generate Control Prior (Borrowed)
-      alpha_safe <- auto_alpha(input$alpha, df$mean, df$sd^2, df$n)
-      prior_ctrl <- cont_prior_from_hist(df$mean, df$sd^2, df$n, alpha_safe)
+      # 2. PROCEED WITH PRIOR BUILDING
+      tryCatch({
+        # Generate Control Prior (Borrowed)
+        alpha_safe <- auto_alpha(input$alpha, df$mean, df$sd^2, df$n)
+        prior_ctrl <- cont_prior_from_hist(df$mean, df$sd^2, df$n, alpha_safe)
 
-      # 2. Generate Control Posterior
-      var_c <- (input$sd_c)^2
-      post_c <- cont_posterior(prior_ctrl, input$mean_c, var_c, input$n_c)
+        # Generate Control Posterior
+        var_c <- (input$sd_c)^2
+        post_c <- cont_posterior(prior_ctrl, input$mean_c, var_c, input$n_c)
 
-      # 3. Store Results locally and globally
-      local_rv$active_prior <- prior_ctrl
-      local_rv$active_post  <- post_c
-      local_rv$ess          <- ess_nig(prior_ctrl, post_c)
+        # 3. Store Results locally and globally
+        local_rv$active_prior <- prior_ctrl
+        local_rv$active_post  <- post_c
+        local_rv$ess          <- ess_nig(prior_ctrl, post_c)
+        local_rv$ready        <- TRUE
 
-      # Global Sync: matching binary pattern
-      app_rv$cont_ctrl_prior <- prior_ctrl
-      app_rv$cont_ctrl_post  <- post_c
+        app_rv$cont_ctrl_prior <- prior_ctrl
+        app_rv$cont_ctrl_post  <- post_c
+        app_rv$cont_current_ctrl <- list(
+          mean = input$mean_c,
+          sd = input$sd_c,
+          n = input$n_c
+        )
 
-      # We store the current control data specifically
-      app_rv$cont_current_ctrl <- list(
-        mean = input$mean_c,
-        sd = input$sd_c,
-        n = input$n_c
-      )
+        showNotification("Continuous prior built and synchronized.", type = "message")
 
-      showNotification("Control prior and data synchronized.", type = "message")
+      }, error = function(e) {
+        showNotification(paste("Calculation Error:", e$message), type = "error")
+      })
     })
 
     # --- Value Box Outputs ---

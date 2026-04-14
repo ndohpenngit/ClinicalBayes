@@ -31,39 +31,70 @@ binary_priors_ui <- function(id) {
       )
     ),
 
-    fluidRow(
-      # Executive Summary Boxes - Focused on Control Arm Information
-      valueBoxOutput(ns("ess_prior_box"), width = 4),
-      valueBoxOutput(ns("ess_current_box"), width = 4),
-      valueBoxOutput(ns("ess_total_box"), width = 4)
+    # --- CONDITIONAL RESULTS AREA ---
+    conditionalPanel(
+      condition = "output['data_ready']",
+      ns = ns,
+
+      fluidRow(
+        # Executive Summary Boxes
+        valueBoxOutput(ns("ess_prior_box"), width = 4),
+        valueBoxOutput(ns("ess_current_box"), width = 4),
+        valueBoxOutput(ns("ess_total_box"), width = 4)
+      ),
+
+      fluidRow(
+        # Diagnostics
+        box(width = 6, title = "Control Prior (Historical)", status = "info", solidHeader = TRUE,
+            plotOutput(ns("prior_plot"), height = "280px") %>% withSpinner(),
+            tags$b("Summary:"),
+            verbatimTextOutput(ns("prior_txt"))
+        ),
+        box(width = 6, title = "Control Posterior (Borrowed)", status = "success", solidHeader = TRUE,
+            plotOutput(ns("post_plot"), height = "280px") %>% withSpinner(),
+            tags$b("Summary:"),
+            verbatimTextOutput(ns("post_txt"))
+        )
+      )
     ),
 
-    fluidRow(
-      # Diagnostics
-      box(width = 6, title = "Control Prior (Historical)", status = "info", solidHeader = TRUE,
-          plotOutput(ns("prior_plot"), height = "280px") %>% withSpinner(),
-          tags$b("Summary:"),
-          verbatimTextOutput(ns("prior_txt"))
-      ),
-      box(width = 6, title = "Control Posterior (Borrowed)", status = "success", solidHeader = TRUE,
-          plotOutput(ns("post_plot"), height = "280px") %>% withSpinner(),
-          tags$b("Summary:"),
-          verbatimTextOutput(ns("post_txt"))
+    # Placeholder when not "ready"
+    conditionalPanel(
+      condition = "!output['data_ready']",
+      ns = ns,
+      column(12, align = "center",
+             div(style = "padding: 50px; color: #999;",
+                 icon("arrow-up", class = "fa-3x"),
+                 h4("Configure parameters and click 'Build Prior' to view results.")
+             )
       )
     )
   )
 }
 
+
 binary_priors_server <- function(id, app_rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    local_rv <- reactiveValues(active_prior = NULL, active_post = NULL)
+    local_rv <- reactiveValues(
+      active_prior = NULL,
+      active_post = NULL,
+      ready = FALSE
+    )
 
-    observeEvent(input$prior_method, {
+    # Defensive Reset when inputs change
+    observeEvent(list(input$prior_method, input$robust_w, input$alpha, input$curr_events, input$curr_n), {
       local_rv$active_prior <- NULL
       local_rv$active_post  <- NULL
+      local_rv$ready        <- FALSE
     })
+
+    # Hidden output for UI ConditionalPanel
+    output$data_ready <- reactive({
+      return(local_rv$ready)
+    })
+    outputOptions(output, "data_ready", suspendWhenHidden = FALSE)
 
     output$method_controls_ui <- renderUI({
       if (input$prior_method == "rmap") {
@@ -74,34 +105,57 @@ binary_priors_server <- function(id, app_rv) {
     })
 
     observeEvent(input$build_all, {
-      df <- app_rv$hist_summary
-      validate(need(!is.null(df), "Please load historical data in the Data tab first."))
 
-      # 1. Handle Control Prior/Posterior logic
-      if (input$prior_method == "rmap") {
-        base_mix <- make_hist_mix(events = df$events, n = df$n, weight_by_n = TRUE)
-        prior <- robustify_mix(base_mix, robust_w = input$robust_w)
-        post  <- postmix_beta(prior, y = input$curr_events, n = input$curr_n)
-
-        local_rv$active_prior <- prior
-        local_rv$active_post  <- post
-        app_rv$ctrl_post      <- list(type = "rmap", obj = post)
-
-      } else {
-        pp <- power_prior_beta(events = df$events, n = df$n, alpha = input$alpha, a0 = 1, b0 = 1)
-        prior <- list(a = as.numeric(pp$a)[1], b = as.numeric(pp$b)[1])
-        post  <- list(a = prior$a + input$curr_events,
-                      b = prior$b + (input$curr_n - input$curr_events))
-
-        local_rv$active_prior <- prior
-        local_rv$active_post  <- post
-        app_rv$ctrl_post      <- list(type = "pp", obj = post)
+      # 1. GATEKEEPER VALIDATION
+      if (is.null(app_rv$hist_df)) {
+        showNotification("No data found. Please upload a dataset in the 'Data' tab.", type = "error")
+        return()
       }
 
-      # 2. Sync Control Data (Treatment data is handled in mod_bin_decision.R)
-      app_rv$current_trial_control <- list(y = input$curr_events, n = input$curr_n)
+      if (app_rv$hist_type != "binary") {
+        showNotification("Data Type Mismatch: This module requires Binary data.", type = "error")
+        return()
+      }
 
-      showNotification("Control prior built and synchronized for analysis.", type = "message")
+      # Ensure summary data exists (specific to binary logic)
+      df <- app_rv$hist_summary
+      if (is.null(df)) {
+        showNotification("Historical summary not found. Re-load data in 'Data' tab.", type = "error")
+        return()
+      }
+
+      # 2. PROCEED WITH PRIOR BUILDING
+      tryCatch({
+        if (input$prior_method == "rmap") {
+          base_mix <- make_hist_mix(events = df$events, n = df$n, weight_by_n = TRUE)
+          prior <- robustify_mix(base_mix, robust_w = input$robust_w)
+          post  <- postmix_beta(prior, y = input$curr_events, n = input$curr_n)
+
+          local_rv$active_prior <- prior
+          local_rv$active_post  <- post
+          app_rv$ctrl_post      <- list(type = "rmap", obj = post)
+
+        } else {
+          pp <- power_prior_beta(events = df$events, n = df$n, alpha = input$alpha, a0 = 1, b0 = 1)
+          prior <- list(a = as.numeric(pp$a)[1], b = as.numeric(pp$b)[1])
+          post  <- list(a = prior$a + input$curr_events,
+                        b = prior$b + (input$curr_n - input$curr_events))
+
+          local_rv$active_prior <- prior
+          local_rv$active_post  <- post
+          app_rv$ctrl_post      <- list(type = "pp", obj = post)
+        }
+
+        # Sync Control Data & State
+        app_rv$current_trial_control <- list(y = input$curr_events, n = input$curr_n)
+        local_rv$ready <- TRUE
+
+        showNotification("Binary control prior built and synchronized.", type = "message")
+
+      }, error = function(e) {
+        local_rv$ready <- FALSE
+        showNotification(paste("Calculation Error:", e$message), type = "error")
+      })
     })
 
     # --- Calibrated ESS Boxes ---
