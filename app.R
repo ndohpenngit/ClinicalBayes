@@ -80,7 +80,8 @@ ui <- dashboardPage(
         "Continuous endpoints", icon = icon("chart-line"), startExpanded = FALSE,
         menuSubItem("1. Priors & Posterior", tabName = "cont2a"),
         menuSubItem("2. Decision (Δ)", tabName = "cont2a_dec"),
-        menuSubItem("3. Operating characteristics", tabName = "cont2a_oc")
+        menuSubItem("3. Operating characteristics", tabName = "cont2a_oc"),
+        menuSubItem("4. Commensurate (Stan)", tabName = "comm_cont")
       ),
 
       # -------- Other --------
@@ -162,6 +163,7 @@ ui <- dashboardPage(
       cont2a_data_ui("cont2a_data_1"),
       cont2a_decision_ui("cont2a_dec_1"),
       cont2a_oc_ui("cont2a_oc_1"),
+      comm_cont_ui("comm_cont_1"),
 
       workflow_ui("workflow_1"),
       report_ui("report_1"),
@@ -205,69 +207,82 @@ ui <- dashboardPage(
 )
 
 # -------------------------------
-# Server
+# Server Logic
 # -------------------------------
 server <- function(input, output, session) {
-
-  # # Session-specific shared state
-  # app_rv <- reactiveValues(
-  #   datasets  = list(),
-  #   current_dataset = NULL,
-  #   hist_df      = NULL,
-  #   hist_summary = NULL,
-  #   hist_raw  = NULL,
-  #   hist_uploaded = NULL,
-  #
-  #   # binary two-arm
-  #   rmap      = NULL,
-  #   pp        = NULL,
-  #   ctrl_post = NULL,
-  #   decision  = NULL,
-  #   oc        = NULL,
-  #   comm      = NULL,
-  #
-  #   # continuous two-arm
-  #   cont_current = NULL,
-  #   cont_ctrl_prior = NULL,
-  #   cont_ctrl_post  = NULL,
-  #   cont_trt_post   = NULL,
-  #   cont_ess        = NULL
-  # )
 
   # Centralized Shared State
   app_rv <- reactiveValues(
     datasets = list(),
     current_dataset = NULL,
     hist_df = NULL,
+    hist_summary = NULL,
+    hist_type = "none",  # "binary", "continuous", or "none"
+
     # Binary State
-    rmap = NULL, pp = NULL, ctrl_post = NULL,
-    decision = NULL, oc = NULL, comm = NULL,
+    rmap = NULL,
+    pp = NULL,
+    ctrl_post = NULL,
+    current_trt = NULL,  # Stores {y, n} for binary decision
+    decision = NULL,
+    oc = NULL,
+    comm = NULL,
+
     # Continuous State
-    cont_current = NULL,
+    cont_current_ctrl = NULL, # Stores {mean, sd, n} for control
+    cont_current_trt = NULL,  # Stores {mean, sd, n} for treatment
     cont_ctrl_prior = NULL,
     cont_ctrl_post = NULL,
     cont_trt_post = NULL,
-    cont_ess = NULL
+    cont_decision = NULL,
+    cont_ess = NULL,
+    comm_cont = NULL
+
   )
 
-  # Call Modules Servers
+  # --------------------------------------------------
+  # Global Data Watchdog: Syncs hist_type for safety
+  # --------------------------------------------------
+  observe({
+    df <- app_rv$hist_df
+    if (is.null(df)) {
+      app_rv$hist_type <- "none"
+    } else {
+      nm <- tolower(trimws(names(df)))
+      # Heuristic detection to prevent cross-module crashes
+      if (all(c("study", "events", "n") %in% nm)) {
+        app_rv$hist_type <- "binary"
+      } else if (all(c("study", "mean", "sd", "n") %in% nm)) {
+        app_rv$hist_type <- "continuous"
+      } else {
+        app_rv$hist_type <- "unknown"
+      }
+    }
+  })
+
+  # --------------------------------------------------
+  # Call Module Servers
+  # --------------------------------------------------
   data_server("data_1", app_rv)
 
+  # Binary Modules
   binary_priors_server("binary_priors_1", app_rv)
   decision_server("decision_1", app_rv)
   oc_server("oc_1", app_rv)
   comm_server("comm_1", app_rv)
 
+  # Continuous Modules
   cont2a_data_server("cont2a_data_1", app_rv)
   cont2a_decision_server("cont2a_dec_1", app_rv)
   cont2a_oc_server("cont2a_oc_1", app_rv)
+  comm_cont_server("comm_cont_1", app_rv)
 
   report_server("report_1", app_rv)
   workflow_server("workflow_1", dark_reactive = dark_state)
 
   # Documentation iframe UI
   output$docs_iframe <- renderUI({
-    manual_html <- "clinicalbayes_manual.html"   # expected inside www/
+    manual_html <- "clinicalbayes_manual.html"   # inside www/
     manual_pdf  <- "ClinicalBayes_Manual.pdf"
 
     if (file.exists(file.path("www", manual_html))) {

@@ -157,9 +157,9 @@ data_ui <- function(id) {
       #   width = 12, status = NULL, solidHeader = TRUE,
       #   title = "Notes:",
       #   tags$ul(
-      #     # tags$li("Add pop-up if user clicks 'Save dataset' without uploading a file first."),
+      #     tags$li("Ensure binary data is loaded before building binary priors or running OC analysis."),
+      #     tags$li("Ensure continuous data is loaded before building continuous priors or running OC analysis."),
       #     tags$li("Allow user to specify which columns to use for study/events/n if auto-detection fails? (advanced)"),
-      #     tags$li("DEBUG Warning: Error in cont_draw_delta: could not find function 'cont_draw_delta'. See mod_cont2a_decision.R")
       #   )
       # )
     )

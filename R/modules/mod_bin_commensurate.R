@@ -1,5 +1,5 @@
 # ======================================================
-# Module: Binary Commensurate Prior (RStan Version)
+# Module: Binary Commensurate Prior (RStan)
 # ======================================================
 
 comm_ui <- function(id) {
@@ -7,7 +7,7 @@ comm_ui <- function(id) {
   tabItem(
     tabName = "comm",
     fluidRow(
-      # Configuration Box - Matching Binary/Continuous UX
+      # Configuration Box
       box(width = 12, status = "primary", solidHeader = TRUE,
           title = "Binary Commensurate Prior Management",
           column(5,
@@ -47,23 +47,48 @@ comm_ui <- function(id) {
       )
     ),
 
-    # Executive Summary - Matching UX
-    fluidRow(
-      valueBoxOutput(ns("mean_delta_box"), width = 6),
-      valueBoxOutput(ns("mean_tau_box"), width = 6)
+    # --- CONDITIONAL RESULTS AREA ---
+    conditionalPanel(
+      condition = "output['comm_ready']",
+      ns = ns,
+
+      fluidRow(
+        valueBoxOutput(ns("mean_delta_box"), width = 6),
+        valueBoxOutput(ns("mean_tau_box"), width = 6)
+      ),
+
+      fluidRow(
+        box(width = 6, title = "Treatment Effect (Δ)", status = "info", solidHeader = TRUE,
+            tabsetPanel(
+              tabPanel("Density", plotOutput(ns("delta_plot"), height = "280px") %>% withSpinner()),
+              tabPanel("Diagnostics", plotOutput(ns("delta_trace"), height = "280px"))
+            ),
+            hr(),
+            tags$b("Summary Statistics:"),
+            verbatimTextOutput(ns("delta_txt"))
+        ),
+        box(width = 6, title = "Commensurability (τ)", status = "success", solidHeader = TRUE,
+            tabsetPanel(
+              tabPanel("Density", plotOutput(ns("tau_plot"), height = "280px") %>% withSpinner()),
+              tabPanel("Diagnostics", plotOutput(ns("tau_trace"), height = "280px"))
+            ),
+            hr(),
+            tags$b("Summary Statistics:"),
+            verbatimTextOutput(ns("tau_txt"))
+        )
+      )
     ),
 
-    fluidRow(
-      # Diagnostics
-      box(width = 6, title = "Posterior of Δ (p_t − p_c)", status = "info", solidHeader = TRUE,
-          plotOutput(ns("delta_plot"), height = "280px") %>% withSpinner(),
-          tags$b("Summary:"),
-          verbatimTextOutput(ns("delta_txt"))
-      ),
-      box(width = 6, title = "Posterior of τ (Commensurability)", status = "success", solidHeader = TRUE,
-          plotOutput(ns("tau_plot"), height = "280px") %>% withSpinner(),
-          tags$b("Summary:"),
-          verbatimTextOutput(ns("tau_txt"))
+    # Placeholder
+    conditionalPanel(
+      condition = "!output['comm_ready']",
+      ns = ns,
+      column(12, align = "center",
+             div(style = "padding: 50px; color: #999;",
+                 icon("microchip", class = "fa-3x"),
+                 h4("MCMC Model Idle"),
+                 p("Configure trial data and hyperpriors, then click 'Fit Model' to start sampling.")
+             )
       )
     )
   )
@@ -73,80 +98,123 @@ comm_server <- function(id, app_rv) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Reactive state for MCMC draws
-    draws_rv <- reactiveVal(NULL)
+    # Local state for MCMC
+    local_rv <- reactiveValues(
+      draws = NULL,
+      ready = FALSE
+    )
 
     # Clean UI on input change
-    observeEvent(list(input$y_c, input$y_t, input$y_h, input$tau_shape), {
-      draws_rv(NULL)
+    observeEvent(list(input$y_c, input$y_t, input$y_h, input$n_c, input$n_t, input$n_h, input$tau_shape, input$tau_rate), {
+      local_rv$draws <- NULL
+      local_rv$ready <- FALSE
     })
+
+    # Export state to UI
+    output$comm_ready <- reactive({ local_rv$ready })
+    outputOptions(output, "comm_ready", suspendWhenHidden = FALSE)
 
     # Fit MCMC Logic
     observeEvent(input$fit, {
-      # Use rstan for easier ShinyApps deployment
+
+      # 1. GATEKEEPER VALIDATION
+      # Check if binary data was actually the intent/source
+      if (!is.null(app_rv$hist_type) && app_rv$hist_type != "binary") {
+        showNotification("Data Type Mismatch: Commensurate model is currently configured for Binary data.", type = "error")
+        return()
+      }
+
       library(rstan)
       library(posterior)
       library(bayesplot)
 
       stan_path <- "stan/commensurate_binom.stan"
-      validate(need(file.exists(stan_path), "Stan model file not found."))
+      if (!file.exists(stan_path)) {
+        showNotification("Stan model file not found in 'stan/' directory.", type = "error")
+        return()
+      }
 
-      data_list <- list(
-        y_t = input$y_t, n_t = input$n_t,
-        y_c = input$y_c, n_c = input$n_c,
-        y_h = input$y_h, n_h = input$n_h,
-        tau_shape = input$tau_shape,
-        tau_rate  = input$tau_rate
-      )
-
-      # Compile and sample using RStan
-      withProgress(message = 'Running MCMC Sampling...', value = 0, {
-        fit <- stan(file = stan_path, data = data_list,
-                    chains = 4, iter = 2000, warmup = 1000,
-                    cores = parallel::detectCores(), seed = 123)
-
-        # Convert to draws_df for easy processing
-        draws <- as_draws_df(fit)
-        draws_rv(draws)
-
-        # Store for global decision modules
-        app_rv$comm <- list(
-          draws = draws,
-          summary = list(
-            delta_mean = mean(draws$diff),
-            delta_q = quantile(draws$diff, c(0.025, 0.975)),
-            tau_mean = mean(draws$tau),
-            tau_q = quantile(draws$tau, c(0.025, 0.975))
-          )
+      # 2. PROCEED WITH SAMPLING
+      tryCatch({
+        data_list <- list(
+          y_t = input$y_t, n_t = input$n_t,
+          y_c = input$y_c, n_c = input$n_c,
+          y_h = input$y_h, n_h = input$n_h,
+          tau_shape = input$tau_shape,
+          tau_rate  = input$tau_rate
         )
+
+        withProgress(message = 'Running MCMC Sampling...', value = 0.5, {
+          fit <- stan(file = stan_path, data = data_list,
+                      chains = 4, iter = 2000, warmup = 1000,
+                      cores = parallel::detectCores(), seed = 123)
+
+          # Convert and Store
+          draws <- as_draws_df(fit)
+          local_rv$draws <- draws
+          local_rv$ready <- TRUE
+
+          # Store for global use
+          app_rv$comm <- list(
+            draws = draws,
+            summary = list(
+              delta_mean = mean(draws$diff),
+              delta_q = quantile(draws$diff, c(0.025, 0.975)),
+              tau_mean = mean(draws$tau),
+              tau_q = quantile(draws$tau, c(0.025, 0.975))
+            )
+          )
+        })
+        showNotification("MCMC sampling complete.", type = "message")
+
+      }, error = function(e) {
+        showNotification(paste("Stan Error:", e$message), type = "error")
+        local_rv$ready <- FALSE
       })
-      showNotification("MCMC sampling complete.", type = "message")
     })
 
     # --- Value Boxes ---
     output$mean_delta_box <- renderValueBox({
-      req(draws_rv())
-      val <- mean(draws_rv()$diff)
+      req(local_rv$draws)
+      val <- mean(local_rv$draws$diff)
       valueBox(round(val, 4), "Mean Treatment Effect (Δ)", icon = icon("balance-scale"), color = "blue")
     })
 
     output$mean_tau_box <- renderValueBox({
-      req(draws_rv())
-      val <- mean(draws_rv()$tau)
+      req(local_rv$draws)
+      val <- mean(local_rv$draws$tau)
       valueBox(round(val, 2), "Mean Commensurability (τ)", icon = icon("link"), color = "green")
     })
 
     # --- Plots & Summaries ---
+    # Density Plots ---
     output$delta_plot <- renderPlot({
-      req(draws_rv())
-      mcmc_dens(draws_rv(), pars = "diff") +
-        theme_minimal() + labs(title = "Treatment Effect Posterior")
+      req(local_rv$draws)
+      mcmc_dens(local_rv$draws, pars = "diff") +
+        theme_minimal() +
+        labs(title = "Posterior Density of Δ", subtitle = "Difference in proportions (p_t - p_c)")
     })
 
     output$tau_plot <- renderPlot({
-      req(draws_rv())
-      mcmc_dens(draws_rv(), pars = "tau") +
-        theme_minimal() + labs(title = "Commensurability Parameter Posterior")
+      req(local_rv$draws)
+      mcmc_dens(local_rv$draws, pars = "tau") +
+        theme_minimal() +
+        labs(title = "Posterior Density of τ", subtitle = "Precision of historical borrow")
+    })
+
+    # Trace Plots (Diagnostics) ---
+    output$delta_trace <- renderPlot({
+      req(local_rv$draws)
+      mcmc_trace(local_rv$draws, pars = "diff") +
+        theme_minimal() +
+        labs(title = "Trace Plot: Δ", subtitle = "Check for chain convergence and mixing")
+    })
+
+    output$tau_trace <- renderPlot({
+      req(local_rv$draws)
+      mcmc_trace(local_rv$draws, pars = "tau") +
+        theme_minimal() +
+        labs(title = "Trace Plot: τ", subtitle = "Check for chain convergence and mixing")
     })
 
     output$delta_txt <- renderText({
