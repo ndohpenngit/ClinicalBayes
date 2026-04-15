@@ -1,19 +1,155 @@
 ---
-title: "`r params$title %||% 'ClinicalBayes Report'`"
-output: html_document
+title: "`r params$title`"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    highlight: tango
 params:
-  title: "ClinicalBayes Report"
+  title: "ClinicalBayes Analysis Report"
+  # Binary Arm
   priors: NULL
   ctrl_post: NULL
   decision: NULL
   oc: NULL
   comm: NULL
-  cont2a_oc: NULL
+  # Continuous Arm
+  cont_ctrl: NULL
+  cont_decision: NULL
+  cont_oc: NULL
+  comm_cont: NULL
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+# Global chunk options
+knitr::opts_chunk$set(
+  echo = FALSE, 
+  message = FALSE, 
+  warning = FALSE, 
+  fig.width = 10, 
+  fig.height = 6
+)
+
+# Null coalescing operator
 `%||%` <- function(x, y) if (is.null(x)) y else x
+
+# Libraries
 library(ggplot2)
 library(DT)
+library(dplyr)
+library(rstan)
+library(bayesplot)
+library(scales)
+library(htmltools)
+
+# For Stan plots in RMarkdown
+options(device = function(...) {
+  pdf(file = NULL)
+  dev.control("enable")
+})
 ```
+
+# 1. Executive Summary
+
+This report provides a formal summary of the Bayesian clinical trial analysis. It documents the prior distributions elicited from historical data, the resulting posterior distributions, and the formal decision metrics regarding treatment efficacy.
+
+# 2. Binary Endpoint Analysis
+
+```{r, results='asis', ev}
+if (is.null(params$decision)) {
+  cat("\n> **Status:** No binary analysis data found in this session.\n")
+} else {
+  cat("### Posterior Decision Metrics\n\n")
+  cat("**Pr(Treatment Effect > Δ* | Data):** ", 
+      round(params$decision$prob %||% 0, 4), "\n\n")
+  
+  if (!is.null(params$ctrl_post)) {
+    cat("### Control Arm Prior & Posterior\n")
+    # This assumes ctrl_post is a ggplot object or has a plot method
+    print(params$ctrl_post)
+  }
+}
+```
+
+## Binary Operating Characteristics
+
+```{r, results='asis'}
+if (is.null(params$oc)) {
+  cat("_Operating characteristics not simulated for binary endpoints._\n")
+} else {
+  cat("The following analysis demonstrates the frequentist power and Type-I error across a grid of true response rates.\n")
+  # If params$oc is the result of the simulation, plot the power curve
+  print(params$oc$plot %||% params$oc) 
+}
+```
+
+# 3. Continuous Endpoint Analysis
+
+```{r, results='asis'}
+if (is.null(params$cont_decision)) {
+  cat("\n> **Status:** No continuous analysis data found in this session.\n")
+} else {
+  cat("### Posterior Decision Metrics\n\n")
+  cat("**Pr(μ_t - μ_c > Δ* | Data):** ", 
+      round(params$cont_decision$prob %||% 0, 4), "\n\n")
+  
+  if (!is.null(params$cont_ctrl)) {
+    cat("### Continuous Control Posterior Summary\n")
+    if(is.data.frame(params$cont_ctrl)) {
+      # Use tagList to ensure HTML widget renders inside asis chunk
+      cat(as.character(tagList(datatable(params$cont_ctrl, options = list(dom = 't')))))
+    } else {
+      print(params$cont_ctrl)
+    }
+  }
+}
+```
+
+## Continuous Operating Characteristics
+
+```{r, results='asis'}
+if (is.null(params$cont_oc)) {
+  cat("_Operating characteristics not simulated for continuous endpoints._\n")
+} else {
+  cat("Simulation results for continuous endpoints.\n")
+  print(params$cont_oc$plot %||% params$cont_oc)
+}
+```
+
+# 4. Commensurate Borrowing Models (Stan)
+
+Dynamic borrowing utilizes the Commensurate Prior model to weigh historical evidence based on its consistency with the current trial data.
+
+## Model Diagnostics & Borrowing Strength
+
+```{r, results='asis'}
+if (is.null(params$comm) && is.null(params$comm_cont)) {
+    cat("*No commensurate models (Stan) were fitted in this session.*\n")
+} else {
+    cat("The posterior distribution of the commensurability parameter (τ) indicates the weight assigned to historical data.\n")
+    
+    if (!is.null(params$comm)) {
+        cat("#### MCMC Trace Plots (Binary Commensurate)\n")
+        print(mcmc_trace(as.array(params$comm), pars = "tau"))
+    }
+    
+    if (!is.null(params$comm_cont)) {
+        cat("#### MCMC Trace Plots (Continuous Commensurate)\n")
+        print(mcmc_trace(as.array(params$comm_cont), pars = "tau"))
+    }
+}
+```
+
+# 5. Technical Metadata
+
+- **Generator:** ClinicalBayes v1.0  
+- **Analysis Engine:** Stan (MCMC) & Analytical Conjugate Priors  
+- **Rendered At:** `r Sys.time()`  
+- **R Version:** `r R.version.string`
+
+<div style="margin-top: 50px; text-align: center; border-top: 1px solid #eee; padding-top: 20px; color: #777;">
+Analysis Report
+</div>

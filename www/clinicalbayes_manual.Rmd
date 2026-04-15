@@ -19,11 +19,47 @@ always_allow_html: true
 geometry: margin=1in
 fontsize: 11pt
 ---
-    
+
+<style>
+/* 1. Expand the document width and create space for the menu */
+@media (min-width: 992px) {
+  .main-container {
+    margin-left: 350px !important; 
+    max-width: 1400px !important; 
+    width: 80% !important;
+  }
+  
+  /* 2. FORCE the Title, Logo, and Headers to move right and stay out of the TOC */
+  #header, 
+  .fluid-row, 
+  .logo-header,
+  .section.level1, 
+  .section.level2 {
+    margin-left: 0px !important;
+  }
+
+  /* 3. Keep the TOC sidebar fixed on the left */
+  #TOC {
+    width: 300px !important;
+    position: fixed;
+    left: 20px;
+    margin-top: 20px;
+  }
+}
+
+/* 4. Page Spacing */
+body {
+  padding-top: 40px;
+  font-size: 11pt;
+}
+</style>
+
 ```{r setup, include=FALSE}
 # Knitr / render options
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, cache = FALSE)
 options(knitr.kable.NA = "")
+library(DiagrammeR)
+library(knitr)
 ```
 
 <!-- HEADER WITH LOGO + TITLE -->
@@ -67,77 +103,11 @@ The ClinicalBayes workflow for Bayesian borrowing, posterior computation,
 decision-making, and operating characteristics follows the structure below.
 
 ```{r workflow-diagram, echo=FALSE, eval=knitr::is_html_output()}
-library(DiagrammeR)
-
-grViz("
-digraph clinicalbayes {
-  graph [rankdir = LR, fontsize = 10]
-  node [shape = rectangle, style = filled, fillcolor = white, fontname = Helvetica]
-
-  subgraph cluster_hist {
-    label = 'Historical Data';
-    color = '#cccccc';
-    style = 'rounded';
-    hist_bin  [label='Historical binary\\n(y_i, n_i)'];
-    hist_cont [label='Historical continuous\\n(mean, var, N)'];
-  }
-
-  subgraph cluster_binary {
-    label = 'Binary Endpoint';
-    color = '#cccccc';
-    style = 'rounded';
-    rmap   [label='rMAP prior'];
-    pprior [label='Power prior'];
-    comm   [label='Commensurate prior\\n(Stan)'];
-    b_dec  [label='Binary decision\\nP(Δ > Δ*)'];
-    b_oc   [label='Binary OC simulation'];
-  }
-
-  subgraph cluster_cont {
-    label = 'Continuous Endpoint';
-    color = '#cccccc';
-    style = 'rounded';
-    cont_prior [label='Control N-IG\\n(power prior)'];
-    cont_dec   [label='Continuous decision\\nP(μ_t - μ_c > Δ*)'];
-    cont_oc    [label='Continuous OC simulation'];
-  }
-
-  subgraph cluster_report {
-    label = 'Reporting';
-    color = '#cccccc';
-    style = 'rounded';
-    rep    [label='HTML / PDF report'];
-  }
-
-  curr_bin  [label='Current binary data\\n(y_c, n_c, y_t, n_t)'];
-  curr_cont [label='Current continuous data\\n(means, variances, N)'];
-
-  hist_bin  -> rmap;
-  hist_bin  -> pprior;
-  hist_bin  -> comm;
-  hist_cont -> cont_prior;
-
-  curr_bin  -> rmap;
-  curr_bin  -> pprior;
-  curr_bin  -> comm;
-
-  curr_bin  -> b_dec;
-  b_dec     -> b_oc;
-
-  curr_cont -> cont_prior;
-  cont_prior -> cont_dec;
-  cont_dec   -> cont_oc;
-
-  rmap   -> b_dec;
-  pprior -> b_dec;
-  comm   -> b_dec;
-
-  b_oc    -> rep;
-  cont_oc -> rep;
-  b_dec   -> rep;
-  cont_dec-> rep;
+if (knitr::is_html_output()) {
+  clinicalbayes_workflow() # see mod_workflow.R
+} else {
+  cat("Workflow: [Historical Data] -> [Prior Construction] -> [Current Data Update] -> [Posterior Decision] -> [Reporting]")
 }
-")
 ```
 
 # 1. Binary Endpoints
@@ -253,23 +223,10 @@ Across grids of true parameters.
 
 ---
 
-## 1.6 Commensurate Prior (Stan) {#binary-commensurate}
-
-Linking framework:
-
-\[
-\theta_c^{curr} \sim N(\theta_c^{hist}, \tau^{-1})
-\]
-
-\[
-\tau \sim \text{Gamma}(a_\tau, b_\tau)
-\]
-
----
 
 # 2. Continuous Endpoints
 
-## 2.1 Two-arm: Data & Priors {#cont2a-data}
+## 2.1 Priors {#cont2a-data}
 
 Normal-Inverse-Gamma model:
 
@@ -281,7 +238,7 @@ Supports power prior weighting.
 
 ---
 
-## 2.2 Two-arm: Decision (Δ) {#cont2a-decision}
+## 2.2 Decision (Δ) {#cont2a-decision}
 
 \[
 \Delta = \mu_t - \mu_c
@@ -291,7 +248,7 @@ Same posterior Go / No-Go structure.
 
 ---
 
-## 2.3 Two-arm: Operating Characteristics {#cont2a-oc}
+## 2.3 Operating Characteristics {#cont2a-oc}
 
 Power & Type I error under continuous endpoint.
 
@@ -302,6 +259,9 @@ Power & Type I error under continuous endpoint.
 This appendix summarizes the statistical models, prior constructions, posterior computations, effective sample size (ESS) calculations, decision rules, and operating characteristic (OC) simulation algorithms implemented in ClinicalBayes.
 
 ---
+
+---
+
 
 ## A. Notation
 
@@ -433,20 +393,24 @@ Report heatmaps of Pr(declare efficacy) across the grid. Also compute Type I err
 
 ---
 
-## F. Commensurate Prior (binary, Stan)
+## F. Commensurate Prior (binary, Stan) {#binary-commensurate}
 
-Commensurate prior formulation (sketch):
+For binary data, we model the logit-transformed probabilities to ensure the parameters remain on the real line $(-\infty, \infty)$.
 
-- Work on logit scale: \(\theta = \text{logit}(p)\).
-- Let \(\theta^{hist}\) be historical controls (estimated or modeled), and assume:
+**The Model:**
+  Let $\theta_c^{curr}$ be the logit-event rate for the current control and $\theta_c^{hist}$ be the logit-rate from historical evidence.
+\[ \text{logit}(p_c^{curr}) = \theta_c^{curr} \]
+\[ \theta_c^{curr} \sim N(\theta_c^{hist}, \tau^{-1}) \]
 
-\[
-\theta^{curr} \mid \theta^{hist}, \tau \sim N(\theta^{hist}, \tau^{-1}).
-\]
+**The Precision Parameter ($\tau$):**
+  We assign a weakly informative Gamma prior to the precision: $\tau \sim \text{Gamma}(a_\tau, b_\tau)$.
+- **Consistency:** When the current trial's success rate aligns with historical data, the posterior distribution of $\tau$ concentrates at higher values, leading to "fuller" borrowing.
+- **Conflict:** If the current trial deviates significantly, the posterior of $\tau$ shifts toward zero, effectively "cutting the link" to prevent historical bias from overwhelming the trial results.
 
-Place a prior on \(\tau\) (e.g., \(\tau \sim \text{Gamma}(a_\tau,b_\tau)\)). Larger \(\tau\) → stronger shrinkage toward historical value.
 
-Stan is used to fit the hierarchical model and returns posteriors for \(\theta^{curr}\), \(\theta^{treatment}\), \(\tau\), and \(\Delta\). Posterior inference and decision rule are applied to posterior draws.
+<!-- Place a prior on \(\tau\) (e.g., \(\tau \sim \text{Gamma}(a_\tau,b_\tau)\)). Larger \(\tau\) → stronger shrinkage toward historical value. -->
+
+<!-- Stan is used to fit the hierarchical model and returns posteriors for \(\theta^{curr}\), \(\theta^{treatment}\), \(\tau\), and \(\Delta\). Posterior inference and decision rule are applied to posterior draws. -->
 
 ---
 
@@ -483,6 +447,36 @@ Then compute \(\Delta^{(s)} = \mu_t^{(s)} - \mu_c^{(s)}\) and apply the decision
 
 ### G.4 Borrowing (power prior on control)
 Given historical control summary \((\bar y_H, s^2_H, n_H)\) and power parameter \(\alpha\), convert to an effective prior for control by treating \(n_{eff} = \alpha n_H\) and building the corresponding NIG prior update from the historical summary, then use that as the prior for the current-control posterior update.
+
+## G.5 Commensurate Prior (Continuous, Stan) {#cont-commensurate}
+
+Similar to the binary case, the continuous commensurate prior links the current control mean $\mu_c$ to a historical "reference" mean $\mu_H$ while allowing the data to determine the degree of borrowing. 
+
+The commensurate link is applied to the population means. This allows the model to borrow information about the baseline mean while allowing the current trial to have its own variance.
+
+**The Model:**
+\[ y_{c,i} \sim N(\mu_c, \sigma_c^2) \]
+\[ \mu_c \sim N(\mu_H, (\tau \cdot n_H)^{-1}) \]
+
+**Mechanism:**
+1. **Likelihood:** The current control data informs $\mu_c$ and $\sigma_c^2$.
+2. **Link:** The historical mean $\mu_H$ acts as a "prior anchor" for $\mu_c$.
+3. **Weighting:** The precision $\tau$ scales with the historical sample size $n_H$. If $\tau$ is estimated to be low (due to mean shifts between eras or populations), the effective sample size borrowed from history vanishes.
+
+**Commensurability Parameter ($\tau$):**
+A Gamma prior is placed on the precision $\tau \sim \text{Gamma}(a_\tau, b_\tau)$. 
+- If the current data $\bar{y}_c$ is close to $\mu_H$, the posterior of $\tau$ shifts higher, increasing borrowing.
+- If there is a large conflict, $\tau$ shifts lower, "disconnecting" the current study from the historical data to protect against bias.
+
+### G.6 Summary of Borrowing Behavior (both binary and continuous)
+The table below summarizes how the commensurate prior behaves relative to other methods in the app:
+
+| Feature | Power Prior | rMAP Prior | Commensurate Prior |
+|:---|:---|:---|:---|
+| **Borrowing Type** | Fixed/Static | Mixture-based | Dynamic/Hierarchical |
+| **Conflict Handling** | Manual ($\alpha$) | Robust Component | Automatic ($\tau$) |
+| **Complexity** | Low | Medium | High (Requires Stan) |
+| **Best Use Case** | Small trials | Multiple hist. studies | High uncertainty in data |
 
 ---
 
@@ -531,19 +525,12 @@ Result (example output format; compute in app):
 
 ## K. References for further reading
 
-- Schmidli et al., “Robust meta-analytic predictive priors in clinical trials” (Biometrical Journal).
-- Ibrahim & Chen, “Power prior distributions for regression models” (Journal of Statistical Planning and Inference).
-- Hobbs et al., “Commensurate priors for borrowing historical information in clinical trials” (Biostatistics).
+- **Schmidli, H., et al. (2014).** [Robust meta-analytic-predictive priors in clinical trials with historical control information](https://doi.org/10.1111/biom.12242). *Biometrics*, 70(4), 1023–1032.
+
+- **Ibrahim, J. G., & Chen, M. H. (2000).** [Power prior distributions for regression models](https://doi.org/10.1214/ss/1009212673). *Statistical Science*, 15(1), 46–60.
+
+- **Hobbs, B. P., et al. (2011).** [Hierarchical commensurate priors for post-market surveillance of medical devices](https://doi.org/10.1111/j.1541-0420.2011.01564.x). *Biometrics*, 67(3), 1047–1056.
+
+- **Neuenschwander, B., et al. (2010).** [Summarizing historical information on controls in clinical trials](https://doi.org/10.1177/1740774509356002). *Clinical Trials*, 7(1), 5–18.
 
 ---
-
-# Workflow Diagram {#workflow-diagram}
-
-```{r workflow-diagram, echo=FALSE, out.width='100%'}
-path <- file.path("www", "workflow-diagram.png")
-if (file.exists(path)) {
-  knitr::include_graphics(path)
-} else {
-  cat("Workflow: Upload data → Priors → Current data → Posterior → Decision → OC → Report")
-}
-```

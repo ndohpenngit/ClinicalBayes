@@ -49,15 +49,21 @@ source("www/build_manual.R")
 ui <- dashboardPage(
   skin = "blue",
 
+  title = "ClinicalBayes",
+
   dashboardHeader(
     title = tags$div(
       class = "cb-header-title",
-      tags$img(src   = "logo.png", height = "35px", style  = "margin-right: 10px;"),
-      tags$span("ClinicalBayes")
-    )
+      tags$img(src   = "logo.png", height = "35px",
+               style  = "margin-right: 10px; vertical-align: middle;"),
+      tags$span("ClinicalBayes", style = "font-weight: bold;")
+    ),
+    titleWidth = 250
   ),
 
   dashboardSidebar(
+    width = 250,
+
     sidebarMenu(
       id = "tabs",
 

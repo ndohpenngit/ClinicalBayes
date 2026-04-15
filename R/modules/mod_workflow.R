@@ -28,7 +28,7 @@ clinicalbayes_workflow <- function(dark = FALSE) {
     )
   }
 
-  # Graph - tuned: fontsize, penwidth, arrowsize, margins, rounded boxes
+  # Graph
   grViz(sprintf("
     digraph clinicalbayes {
       graph [rankdir = LR, fontsize = 11, pad='0.2', bgcolor = '%s']
