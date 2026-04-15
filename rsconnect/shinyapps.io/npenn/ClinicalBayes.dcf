@@ -5,7 +5,7 @@ account: npenn
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 17122577
-bundleId: 11850830
+bundleId: 11855723
 url: https://npenn.shinyapps.io/ClinicalBayes/
 version: 1
 asMultiple: FALSE

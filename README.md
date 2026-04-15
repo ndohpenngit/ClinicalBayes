@@ -59,13 +59,13 @@ Users configure their Bayesian scenario here:
 The UI provides instant feedback through high-level metrics and visual diagnostics:
 
 <div align="center">
-  <img src="www/results/binary_summary_boxes.png" alt="ESS Summary Boxes" width="550" />
+  <img src="www/results/image1.png" alt="ESS Summary Boxes" width="550" />
   <br>
   <em>Executive Summary: Prior, Current, and Total Effective Sample Size (ESS).</em>
 </div>
 
 <div align="center">
-  <img src="www/results/posterior_density_plot.png" alt="Posterior Density Plot" width="550" />
+  <img src="www/results/image2.png" alt="Posterior Density Plot" width="550" />
   <br>
   <em>Diagnostic Plot: Overlay of Prior and Posterior distributions showing the impact of borrowing.</em>
 </div>
