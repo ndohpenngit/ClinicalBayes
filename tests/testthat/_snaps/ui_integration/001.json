@@ -1,0 +1,9 @@
+{
+  "export": {
+    "oc_1-local_rv": {
+      "power": "RANDOM_VALIDATED",
+      "n_sim": 100,
+      "ready": true
+    }
+  }
+}
