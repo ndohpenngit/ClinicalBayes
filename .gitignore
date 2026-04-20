@@ -2,7 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
 
 ClinicalBayes_Manual.pdf
 clinicalbayes_manual.html
 
+inst/
+.github/workflows/

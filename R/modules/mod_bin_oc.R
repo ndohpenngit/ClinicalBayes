@@ -144,6 +144,17 @@ oc_server <- function(id, app_rv) {
       })
     })
 
+    # For testing: to allow shinytest2 to 'see' the values
+    exportTestValues(
+      local_rv = {
+        list(
+          power = local_rv$results$power,
+          n_sim = local_rv$results$n_sim,
+          ready = local_rv$ready
+        )
+      }
+    )
+
     # --- OUTPUTS ---
     output$oc_summary_ui <- renderUI({
       res <- req(local_rv$results)

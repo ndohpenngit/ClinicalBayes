@@ -159,22 +159,41 @@ ui <- dashboardPage(
 
     tabItems(
       # module UIs
-      data_ui("data_1"),
+      # data_ui("data_1"),
+      #
+      # binary_priors_ui("binary_priors_1"),
+      # decision_ui("decision_1"),
+      # oc_ui("oc_1"),
+      # comm_ui("comm_1"),
+      #
+      # cont2a_data_ui("cont2a_data_1"),
+      # cont2a_decision_ui("cont2a_dec_1"),
+      # cont2a_oc_ui("cont2a_oc_1"),
+      # comm_cont_ui("comm_cont_1"),
+      #
+      # workflow_ui("workflow_1"),
+      # report_ui("report_1"),
 
-      binary_priors_ui("binary_priors_1"),
-      decision_ui("decision_1"),
-      oc_ui("oc_1"),
-      comm_ui("comm_1"),
+      # 1. Data Tab
+      tabItem(tabName = "data", data_ui("data_1")),
 
-      cont2a_data_ui("cont2a_data_1"),
-      cont2a_decision_ui("cont2a_dec_1"),
-      cont2a_oc_ui("cont2a_oc_1"),
-      comm_cont_ui("comm_cont_1"),
+      # 2. Binary Endpoint Tabs (Mapped to menuSubItems)
+      tabItem(tabName = "binary",   binary_priors_ui("binary_priors_1")),
+      tabItem(tabName = "decision", decision_ui("decision_1")),
+      tabItem(tabName = "oc",       oc_ui("oc_1")),
+      tabItem(tabName = "comm",     comm_ui("comm_1")),
 
-      workflow_ui("workflow_1"),
-      report_ui("report_1"),
+      # 3. Continuous Endpoint Tabs
+      tabItem(tabName = "cont2a",     cont2a_data_ui("cont2a_data_1")),
+      tabItem(tabName = "cont2a_dec", cont2a_decision_ui("cont2a_dec_1")),
+      tabItem(tabName = "cont2a_oc",  cont2a_oc_ui("cont2a_oc_1")),
+      tabItem(tabName = "comm_cont",  comm_cont_ui("comm_cont_1")),
 
-      # --- Documentation tab ---
+      # 4. Other Tabs
+      tabItem(tabName = "workflow", workflow_ui("workflow_1")),
+      tabItem(tabName = "report",   report_ui("report_1")),
+
+      # 5. Documentation tab (with embedded manual)
       tabItem(
         tabName = "docs",
         fluidRow(
@@ -288,7 +307,7 @@ server <- function(input, output, session) {
 
   # Documentation iframe UI
   output$docs_iframe <- renderUI({
-    manual_html <- "clinicalbayes_manual.html"   # inside www/
+    manual_html <- "clinicalbayes_manual.html"
     manual_pdf  <- "ClinicalBayes_Manual.pdf"
 
     if (file.exists(file.path("www", manual_html))) {
@@ -314,16 +333,6 @@ server <- function(input, output, session) {
       )
     }
   })
-
-  # # Manual Iframe Rendering
-  # output$docs_iframe <- renderUI({
-  #   if (file.exists("www/clinicalbayes_manual.html")) {
-  #     tags$iframe(src = "clinicalbayes_manual.html",
-  #                 style = "width:100%; height: calc(100vh - 230px); border:none; overflow:auto;")
-  #   } else {
-  #     div(class = "alert alert-warning", "Manual HTML file not found in www/ folder.")
-  #   }
-  # })
 
   # per-session dark-mode state
   dark_state <- reactiveVal(FALSE)
